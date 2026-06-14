@@ -136,15 +136,16 @@ function draw() {
   ctx.fillStyle = '#3a7d34';  // grønn
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // --- Tegn veien (det avrundede rektangelet) ---
-  // Vi bruker "even-odd fill rule" for å lage "hullet" i midten.
+  // --- Tegn veien ---
+  // Først fyller vi hele det ytre rektangelet med grått (veien).
   ctx.fillStyle = '#888';
-  ctx.beginPath();
   roundRect(track.outerX, track.outerY, track.outerW, track.outerH, track.cornerR);
-  // Tegn innerkanten (hullet) i motsatt retning så det blir åpent i midten
-  ctx.moveTo(track.innerX + track.cornerR, track.innerY);
+  ctx.fill();
+
+  // Deretter tegner vi det indre rektangelet med grønt oppå — det blir "gressplen i midten".
+  ctx.fillStyle = '#3a7d34';
   roundRect(track.innerX, track.innerY, track.innerW, track.innerH, track.cornerR - 10);
-  ctx.fill('evenodd');
+  ctx.fill();
 
   // --- Tegn hvite kantlinjer ---
   ctx.strokeStyle = '#fff';
