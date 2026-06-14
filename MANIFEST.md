@@ -51,6 +51,7 @@ Ferdig:
 - [x] Klikkbar nullstill-knapp for leaderboardet (med to-klikks bekreftelse)
 - [x] Bredere spillvindu (1000×600) med et «billboard» i mørk eik til høyre — tider, nullstill-knapp og hastighetsmåler flyttet dit (ikke lenger oppå banen)
 - [x] «Forrige runde»-tid i HUD-en (oppdateres hver runde, også uten rekord)
+- [x] Ekte racing-start: bilen spawner på pole (plass 1) bak startlinja, og klokka starter først når du krysser linja
 
 Gjenstår for å «lukke» fase 1:
 - [~] Fintuning av fysikkmotor og kjøreprofil (akselerasjon, grep, drift, friksjon) — PÅGÅR. Nylig: «fri»/coasting når ingen knapper trykkes (må bremse aktivt)
@@ -114,3 +115,4 @@ webhotell snart; konkrete tekniske detaljer (server, protokoll) avklares når de
 | 2026-06-14 | Klikkbar nullstill-knapp for leaderboardet (to-klikks bekreftelse) |
 | 2026-06-14 | Bredere canvas (1000×600) + billboard i mørk eik for HUD, så banen ikke blokkeres (v1.2) |
 | 2026-06-14 | Coasting/«fri» når ingen knapper trykkes + «forrige runde»-tid i HUD (v1.3) |
+| 2026-06-14 | Startgrid flyttet til venstre, bil spawner på pole, klokka starter ved startlinja (v1.4) |

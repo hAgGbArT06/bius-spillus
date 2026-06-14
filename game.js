@@ -36,7 +36,7 @@ const ctx = canvas.getContext('2d');
 
 // Versjonsnummer — vises nede til venstre, så man enkelt kan sjekke at alle
 // spiller samme versjon (nyttig hvis noen har en gammel, bufret kopi).
-const VERSION = 'v1.3';
+const VERSION = 'v1.4';
 
 
 // --- 1b. LYD (Web Audio API) ---
@@ -254,7 +254,16 @@ function drawEasterEgg() {
 // Fordelen: vi kan simulere sluring/drift. Bilen peker i én retning (angle),
 // men beveger seg i en annen (vx/vy). Graden av "grip" bestemmer hvor fort
 // fartvektoren retter seg etter bilens vinkel.
-const START = { x: 400, y: 80, angle: 0 };
+// Start/mål-linja ligger midt på toppstykket (her skjer rundetellingen).
+// Den er bevisst skilt fra bilens spawn, så bilen kan stå BAK linja på pole.
+const LINE_X = 400;
+
+// Startoppstilling: nummererte ruter trappet bakover (mot venstre) fra linja.
+// Plass 1 er fremst (nærmest linja). firstX flyttet til venstre for mer plass.
+const GRID = { laneA: 92, laneB: 128, firstX: 344, stepX: 24, count: 6 };
+
+// Bilen starter oppå plass 1 (pole position), bak startlinja.
+const START = { x: GRID.firstX, y: GRID.laneA, angle: 0 };
 
 const car = {
   x: START.x, y: START.y, angle: START.angle,
@@ -286,19 +295,21 @@ function resetCar() {
   for (const k in keys) keys[k] = false;
   // En død avbryter runden: start tiden på nytt og glem halvveis-sjekkpunktet.
   prevCarX = START.x;
-  lap.startTime = performance.now();
+  lap.started = false;        // klokka venter til du krysser startlinja igjen
   lap.passedHalfway = false;
 }
 
 
 // --- 3b. RUNDE-TELLER ---
-// Vi teller en runde når bilen krysser mål-linja øverst (ved x = START.x) på vei
+// Vi teller en runde når bilen krysser mål-linja øverst (ved x = LINE_X) på vei
 // mot HØYRE — men bare hvis den først har vært innom et halvveis-sjekkpunkt
 // nederst på banen. Det hindrer juks ved å vippe fram og tilbake over linja.
+// Klokka starter først ved aller første kryssing (bilen står bak linja på pole).
 const lap = {
   count: 0,              // fullførte runder
+  started: false,        // har klokka begynt? (starter når du krysser linja først)
   passedHalfway: false,  // har bilen passert nedre sjekkpunkt denne runden?
-  startTime: performance.now(),
+  startTime: 0,          // tidspunktet (ms) inneværende runde startet
   lastLapTime: 0,        // forrige rundetid (ms)
   recordFlash: 0,        // teller ned bilder mens "NY REKORD!" blinker
 };
@@ -570,7 +581,7 @@ function getCarZone() {
 
 // Sjekker om bilen har krysset mål-linja eller halvveis-sjekkpunktet.
 function updateLapCounter() {
-  const lineX = START.x;
+  const lineX = LINE_X;
   // Øvre vegbånd (der mål-linja er) og nedre vegbånd (halvveis)
   const inTopBand    = car.y > track.outerY && car.y < track.innerY;
   const inBottomBand = car.y > track.innerY + track.innerH &&
@@ -581,19 +592,27 @@ function updateLapCounter() {
     lap.passedHalfway = true;
   }
 
-  // Øverst: kryss mot HØYRE (venstre→høyre) → fullført runde, hvis halvveis er passert
-  if (inTopBand && prevCarX < lineX && car.x >= lineX && lap.passedHalfway) {
-    lap.count++;
-    const now = performance.now();
-    lap.lastLapTime = now - lap.startTime;
+  // Øverst: kryss mot HØYRE (venstre→høyre)
+  if (inTopBand && prevCarX < lineX && car.x >= lineX) {
+    if (!lap.started) {
+      // Aller første kryssing fra grid → start klokka (ingen runde fullført ennå)
+      lap.started = true;
+      lap.startTime = performance.now();
+      lap.passedHalfway = false;
+    } else if (lap.passedHalfway) {
+      // Fullført runde
+      lap.count++;
+      const now = performance.now();
+      lap.lastLapTime = now - lap.startTime;
 
-    // Var dette en ny rekord? (raskere enn den beste vi hadde fra før)
-    const oldBest = leaderboard.length ? leaderboard[0] : Infinity;
-    recordLapTime(lap.lastLapTime);
-    if (lap.lastLapTime < oldBest) lap.recordFlash = 180;  // blink i ~3 sekunder
+      // Var dette en ny rekord? (raskere enn den beste vi hadde fra før)
+      const oldBest = leaderboard.length ? leaderboard[0] : Infinity;
+      recordLapTime(lap.lastLapTime);
+      if (lap.lastLapTime < oldBest) lap.recordFlash = 180;  // blink i ~3 sekunder
 
-    lap.startTime = now;
-    lap.passedHalfway = false;
+      lap.startTime = now;
+      lap.passedHalfway = false;
+    }
   }
 
   if (lap.recordFlash > 0) lap.recordFlash--;
@@ -768,8 +787,8 @@ function drawTrack() {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Rutete start/mål-linje øverst (der bilen starter)
-  const lx = START.x;
+  // Rutete start/mål-linje øverst (midt på toppstykket)
+  const lx = LINE_X;
   const y0 = track.outerY + BUFFER;   // øvre kant av asfalten
   const y1 = track.innerY - BUFFER;   // nedre kant av asfalten på toppstykket
   const sq = 8;                       // rutestørrelse
@@ -842,28 +861,19 @@ function drawScenery() {
 // Nummererte startbokser malt på asfalten rett bak mål-linja, trappet i to baner
 // (som en ekte startoppstilling). Plass nr. 1 er der bilen din starter.
 function drawStartGrid() {
-  const lineX = START.x;
-  const laneA = 92, laneB = 128;   // to baner på tvers av vegen
-  const positions = [
-    { x: lineX - 16, y: laneA },
-    { x: lineX - 40, y: laneB },
-    { x: lineX - 64, y: laneA },
-    { x: lineX - 88, y: laneB },
-    { x: lineX - 112, y: laneA },
-    { x: lineX - 136, y: laneB },
-  ];
-
   ctx.lineWidth = 2;
   ctx.font = 'bold 10px monospace';
   ctx.textAlign = 'center';
-  positions.forEach((p, i) => {
-    ctx.fillStyle   = 'rgba(255,255,255,0.12)';   // svakt fyll, ser malt ut
+  for (let i = 0; i < GRID.count; i++) {
+    const x = GRID.firstX - i * GRID.stepX;            // trappet bakover
+    const y = (i % 2 === 0) ? GRID.laneA : GRID.laneB; // vekslende bane
+    ctx.fillStyle   = 'rgba(255,255,255,0.12)';        // svakt fyll, ser malt ut
     ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-    ctx.fillRect(p.x - 12, p.y - 8, 24, 16);
-    ctx.strokeRect(p.x - 12, p.y - 8, 24, 16);
+    ctx.fillRect(x - 12, y - 8, 24, 16);
+    ctx.strokeRect(x - 12, y - 8, 24, 16);
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.fillText(i + 1, p.x, p.y + 4);
-  });
+    ctx.fillText(i + 1, x, y + 4);
+  }
   ctx.textAlign = 'left';
 }
 
@@ -1147,7 +1157,8 @@ function drawLapInfo() {
   ctx.fillText('RUNDE ' + lap.count, x + 10, y + 22);
 
   ctx.font = '12px monospace';
-  const current = performance.now() - lap.startTime;
+  // Klokka teller først når du har krysset startlinja
+  const current = lap.started ? (performance.now() - lap.startTime) : 0;
   ctx.fillText('Tid:  ' + formatTime(current), x + 10, y + 40);
 
   // Forrige fullførte runde — oppdateres hver runde, også uten rekord
