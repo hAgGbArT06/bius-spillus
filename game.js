@@ -36,7 +36,7 @@ const ctx = canvas.getContext('2d');
 
 // Versjonsnummer — vises nede til venstre, så man enkelt kan sjekke at alle
 // spiller samme versjon (nyttig hvis noen har en gammel, bufret kopi).
-const VERSION = 'v1.2';
+const VERSION = 'v1.3';
 
 
 // --- 1b. LYD (Web Audio API) ---
@@ -264,11 +264,17 @@ const car = {
   visible: true,
 
   acceleration: 0.16,
-  friction:     0.97,   // nær 1 = lite motstand = bilen glir lenger (bevegelsesmengde)
   maxSpeed:     4,
   boostSpeed:   7,      // topfart med Shift-boost
   boostPower:   1.8,    // hvor mye ekstra motorkraft boost gir
   turnSpeed:    0.045,
+
+  // Friksjon = hvor mye fart bilen beholder hvert bilde (1 = ingen tap).
+  // Nå avhenger den av hva du gjør, så du må bremse aktivt for å sakke ned:
+  friction:          0.97,    // mens du gasser (lar toppfarten sette seg)
+  coastFriction:     0.995,   // ingen knapper → bilen ruller fritt, mister nesten ingen fart
+  brakeFriction:     0.94,    // når du bremser (pil ned / S)
+  handbrakeFriction: 0.87,    // håndbrekk (mellomrom)
 };
 
 function resetCar() {
@@ -671,8 +677,16 @@ function update() {
     car.vy += (facingVy - car.vy) * grip;
   }
 
-  // Friksjon (håndbrekk = ekstra bremsing)
-  const frict = handbrake ? 0.87 : car.friction;
+  // Friksjon — avhenger av hva du gjør:
+  //   håndbrekk → kraftig bremsing
+  //   bremse    → tydelig bremsing
+  //   ingenting → "fri" (ruller videre, mister nesten ingen fart)
+  //   gass      → lett drag (toppfarten settes av taket)
+  let frict;
+  if (handbrake)     frict = car.handbrakeFriction;
+  else if (brake)    frict = car.brakeFriction;
+  else if (!gas)     frict = car.coastFriction;
+  else               frict = car.friction;
   car.vx *= frict;
   car.vy *= frict;
 
@@ -1110,7 +1124,7 @@ function drawSpeedometer() {
 function lapPanelRect() {
   const x = HUD.x + 12, y = HUD.y + 14, w = HUD.w - 24;
   const rows = Math.min(leaderboard.length, 5);
-  const h = 66 + (rows > 0 ? rows * 16 + 6 : 14);
+  const h = rows > 0 ? 92 + rows * 16 + 6 : 104;
   return { x, y, w, h, rows };
 }
 
@@ -1136,22 +1150,26 @@ function drawLapInfo() {
   const current = performance.now() - lap.startTime;
   ctx.fillText('Tid:  ' + formatTime(current), x + 10, y + 40);
 
+  // Forrige fullførte runde — oppdateres hver runde, også uten rekord
+  ctx.fillStyle = '#cfcfcf';
+  ctx.fillText('Forrige: ' + (lap.lastLapTime ? formatTime(lap.lastLapTime) : '--.--'), x + 10, y + 58);
+
   // Overskrift for lista — bytter til blinkende "NY REKORD!" rett etter en rekord
   if (lap.recordFlash > 0 && Math.floor(lap.recordFlash / 15) % 2 === 0) {
     ctx.fillStyle = '#ffd24a';
-    ctx.fillText('★ NY REKORD! ★', x + 10, y + 58);
+    ctx.fillText('★ NY REKORD! ★', x + 10, y + 78);
   } else {
     ctx.fillStyle = '#9fd0ff';
-    ctx.fillText('Beste tider:', x + 10, y + 58);
+    ctx.fillText('Beste tider:', x + 10, y + 78);
   }
 
   if (rows === 0) {
     ctx.fillStyle = '#888';
-    ctx.fillText('(ingen ennå)', x + 14, y + 74);
+    ctx.fillText('(ingen ennå)', x + 14, y + 94);
   } else {
     for (let i = 0; i < rows; i++) {
       ctx.fillStyle = i === 0 ? '#ffd24a' : '#dddddd';  // rekorden i gull
-      ctx.fillText((i + 1) + '.  ' + formatTime(leaderboard[i]), x + 14, y + 74 + i * 16);
+      ctx.fillText((i + 1) + '.  ' + formatTime(leaderboard[i]), x + 14, y + 94 + i * 16);
     }
   }
 }

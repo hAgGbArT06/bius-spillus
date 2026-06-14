@@ -9,6 +9,8 @@ Et viktig delmål er å lære kodeflyten steg for steg.
 - Ren JavaScript (ingen rammeverk)
 - HTML5 Canvas for grafikk
 - Kjøres rett i nettleser via Live Server
+
+> **Konvensjon:** Versjonsnummeret (`VERSION` i game.js, vises nede til venstre) bumpes ved hver oppdatering.
 - Ingen byggeverktøy / ingen npm i dag. Dette må revurderes i Fase 3 (online flerspiller krever en server — webhotell er på vei).
 
 ## Filer
@@ -48,9 +50,10 @@ Ferdig:
 - [x] Easter egg: hilsen + vennens rekord ("Entps / #2.75") gror frem som gress oppe til venstre
 - [x] Klikkbar nullstill-knapp for leaderboardet (med to-klikks bekreftelse)
 - [x] Bredere spillvindu (1000×600) med et «billboard» i mørk eik til høyre — tider, nullstill-knapp og hastighetsmåler flyttet dit (ikke lenger oppå banen)
+- [x] «Forrige runde»-tid i HUD-en (oppdateres hver runde, også uten rekord)
 
 Gjenstår for å «lukke» fase 1:
-- [ ] Fintuning av fysikkmotor og kjøreprofil (akselerasjon, grep, drift, friksjon) — mål forbedringer mot lagret rundetid
+- [~] Fintuning av fysikkmotor og kjøreprofil (akselerasjon, grep, drift, friksjon) — PÅGÅR. Nylig: «fri»/coasting når ingen knapper trykkes (må bremse aktivt)
 - [ ] Flere lyder (drift-skrik, boost-sus, kollisjon)
 - [ ] **Meny / tilstand-system** (start-, pause-, resultat-skjerm) — *forutsetning for fase 2 og 3*
 - [ ] **Data-drevet bane** (flytte den hardkodede banen inn i en bane-definisjon) — *forutsetning for fase 2 og 3*
@@ -110,3 +113,4 @@ webhotell snart; konkrete tekniske detaljer (server, protokoll) avklares når de
 | 2026-06-14 | Versjonsnummer (v1.1) i hjørnet + easter egg: vennens rekord 2.75 gror frem som gress |
 | 2026-06-14 | Klikkbar nullstill-knapp for leaderboardet (to-klikks bekreftelse) |
 | 2026-06-14 | Bredere canvas (1000×600) + billboard i mørk eik for HUD, så banen ikke blokkeres (v1.2) |
+| 2026-06-14 | Coasting/«fri» når ingen knapper trykkes + «forrige runde»-tid i HUD (v1.3) |
