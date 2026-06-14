@@ -65,10 +65,11 @@ const car = {
   speed: 0,        // absoluttverdi av farten (brukes av HUD)
   visible: true,
 
-  acceleration: 0.15,
-  friction:     0.93,
+  acceleration: 0.16,
+  friction:     0.97,   // nær 1 = lite motstand = bilen glir lenger (bevegelsesmengde)
   maxSpeed:     4,
-  boostSpeed:   7,   // topfart med Shift-boost
+  boostSpeed:   7,      // topfart med Shift-boost
+  boostPower:   1.8,    // hvor mye ekstra motorkraft boost gir
   turnSpeed:    0.045,
 };
 
@@ -76,6 +77,9 @@ function resetCar() {
   car.x = START.x; car.y = START.y; car.angle = START.angle;
   car.vx = 0; car.vy = 0; car.speed = 0;
   car.visible = true;
+  // Nullstill alle taster slik at ingen "henger" fast etter en død.
+  // (Holder du en tast fortsatt inne, registreres den på nytt automatisk.)
+  for (const k in keys) keys[k] = false;
 }
 
 
@@ -154,23 +158,40 @@ document.addEventListener('keyup', (e) => { keys[e.key] = false; });
 
 
 // --- 7. SONEDETEKSJON ---
+// "Signed distance" til et avrundet rektangel: returnerer negativt tall når
+// punktet er INNI formen, positivt når det er UTENFOR. Denne tar hensyn til de
+// buede hjørnene (i motsetning til en vanlig firkant-sjekk), så dødssonen
+// stemmer nøyaktig med asfalten — også i svingene.
+function sdRoundRect(px, py, x, y, w, h, r) {
+  const ccx = x + w / 2, ccy = y + h / 2;   // senter
+  const qx = Math.abs(px - ccx) - (w / 2 - r);
+  const qy = Math.abs(py - ccy) - (h / 2 - r);
+  const outside = Math.sqrt(Math.max(qx, 0) ** 2 + Math.max(qy, 0) ** 2);
+  const inside  = Math.min(Math.max(qx, qy), 0);
+  return outside + inside - r;
+}
+
 function getCarZone() {
-  const { x, y } = car;
   const t = track;
+  const px = car.x, py = car.y;
 
-  const inOuter = x > t.outerX && x < t.outerX + t.outerW &&
-                  y > t.outerY && y < t.outerY + t.outerH;
-  const inInner = x > t.innerX && x < t.innerX + t.innerW &&
-                  y > t.innerY && y < t.innerY + t.innerH;
+  // Ytterkant av hele banen, og gressplenen i midten
+  const sdOuter = sdRoundRect(px, py, t.outerX, t.outerY, t.outerW, t.outerH, t.cornerR);
+  const sdGrass = sdRoundRect(px, py, t.innerX, t.innerY, t.innerW, t.innerH, t.cornerR - 20);
 
-  if (!inOuter || inInner) return 'offroad';
+  // Utenfor banen, eller inne på gressplenen = død
+  if (sdOuter > 0 || sdGrass < 0) return 'offroad';
 
-  const inSafeOuter = x > t.outerX + BUFFER && x < t.outerX + t.outerW - BUFFER &&
-                      y > t.outerY + BUFFER && y < t.outerY + t.outerH - BUFFER;
-  const nearInner   = x > t.innerX - BUFFER && x < t.innerX + t.innerW + BUFFER &&
-                      y > t.innerY - BUFFER && y < t.innerY + t.innerH + BUFFER;
+  // Trygg asfalt: innenfor den grå flaten OG utenfor den indre sandstripa
+  const sdSafe = sdRoundRect(px, py,
+    t.outerX + BUFFER, t.outerY + BUFFER,
+    t.outerW - BUFFER * 2, t.outerH - BUFFER * 2, t.cornerR - 12);
+  const sdInnerSand = sdRoundRect(px, py,
+    t.innerX - BUFFER, t.innerY - BUFFER,
+    t.innerW + BUFFER * 2, t.innerH + BUFFER * 2, t.cornerR - 10);
 
-  return (inSafeOuter && !nearInner) ? 'road' : 'buffer';
+  if (sdSafe < 0 && sdInnerSand > 0) return 'road';
+  return 'buffer';  // ellers: sandstripa (bremser)
 }
 
 
@@ -187,20 +208,26 @@ function update() {
   const right     = keys['ArrowRight'] || keys['d'] || keys['D'];
 
   const topSpeed = boost ? car.boostSpeed : car.maxSpeed;
+  // Boost gir både høyere tak OG mer motorkraft, ellers når bilen aldri det nye taket.
+  const power = boost ? car.acceleration * car.boostPower : car.acceleration;
 
   // Legg akselerasjon til fartvektoren i bilens retning
-  if (gas)   { car.vx += Math.cos(car.angle) * car.acceleration;
-               car.vy += Math.sin(car.angle) * car.acceleration; }
+  if (gas)   { car.vx += Math.cos(car.angle) * power;
+               car.vy += Math.sin(car.angle) * power; }
   if (brake) { car.vx -= Math.cos(car.angle) * car.acceleration * 0.6;
                car.vy -= Math.sin(car.angle) * car.acceleration * 0.6; }
 
   // Beregn nåværende fart (lengden av fartvektoren)
-  const speed = Math.sqrt(car.vx * car.vx + car.vy * car.vy);
+  let speed = Math.sqrt(car.vx * car.vx + car.vy * car.vy);
 
-  // Begrens til topfart
+  // Myk fartsgrense: i stedet for å kappe brått til taket, glir farten gradvis
+  // ned mot det. Det bevarer bevegelsesmengde og gir ikke en brå rykk-følelse
+  // (også når du slipper boost og taket synker fra 7 til 4).
   if (speed > topSpeed) {
-    car.vx = (car.vx / speed) * topSpeed;
-    car.vy = (car.vy / speed) * topSpeed;
+    const eased = Math.max(topSpeed, speed * 0.97);
+    car.vx = (car.vx / speed) * eased;
+    car.vy = (car.vy / speed) * eased;
+    speed = eased;
   }
 
   // Sving (bare når bilen beveger seg)
@@ -461,11 +488,14 @@ function draw() {
   drawExplosion();
   drawSpeedometer();
 
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillRect(8, 8, 300, 26);
-  ctx.fillStyle = '#fff';
+  // Måler tekstbredden først, så boksen alltid blir bred nok (ingen overflyt).
+  const hint = 'WASD / piltaster  •  Shift = boost  •  Mellomrom = drift';
   ctx.font = '13px monospace';
-  ctx.fillText('WASD / piltaster  •  Shift = boost  •  Mellomrom = drift', 16, 26);
+  const hintW = ctx.measureText(hint).width;
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(8, 8, hintW + 16, 26);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(hint, 16, 26);
 }
 
 

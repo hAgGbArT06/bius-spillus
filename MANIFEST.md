@@ -29,6 +29,7 @@ Singleplayer. Målet er å lære kodeflyten steg for steg.
 - [x] Mellomrom = håndbrekk / drift (minimalt grep, skarpere sving)
 - [x] Fartbasert understyring — bilen skrenser mer jo fortere den kjører
 - [x] Bremsemerker på asfalten ved skrensing
+- [x] Sonedeteksjon med avrundede hjørner (signed distance function)
 
 ## Gjenstår / neste steg
 - Runde-teller / tidtaker
@@ -43,3 +44,4 @@ Singleplayer. Målet er å lære kodeflyten steg for steg.
 | 2026-06-14 | Lagt til buffersone, eksplosjon og hastighetsmåler |
 | 2026-06-14 | Fikset ujevn vegbredde — nå 125px på alle fire sider |
 | 2026-06-14 | WASD-kontroller, Shift-boost, håndbrekk/drift og understyring |
+| 2026-06-14 | Fiks: bred nok tekstboks, nullstiller taster ved død, boost gir reell fart, mer bevegelsesmengde, hjørne-nøyaktig sonedeteksjon |
