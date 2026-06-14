@@ -8,6 +8,7 @@
 //   2b. Pynt (grantrær og busker)
 //   3.  Bilen
 //   3b. Runde-teller
+//   3c. Leaderboard (localStorage)
 //   4.  Bremsemerker (skid marks)
 //   5.  Eksplosjon + brennmerker
 //   6.  Tastaturinput
@@ -15,6 +16,7 @@
 //   8.  Oppdater spilltilstand
 //   9.  Tegn banen + mål-linje
 //   9b. Tegn pynt (trær/busker)
+//   9c. Tegn startgrid
 //  10.  Tegn bremsemerker
 //  11.  Tegn bilen
 //  12.  Tegn brennmerker + eksplosjon
@@ -215,13 +217,46 @@ const lap = {
   passedHalfway: false,  // har bilen passert nedre sjekkpunkt denne runden?
   startTime: performance.now(),
   lastLapTime: 0,        // forrige rundetid (ms)
-  bestLapTime: 0,        // beste rundetid (ms), 0 = ingen ennå
+  recordFlash: 0,        // teller ned bilder mens "NY REKORD!" blinker
 };
 let prevCarX = START.x;  // bilens x forrige bilde — brukes til å oppdage kryssing
 
 // Gjør millisekunder om til en lesbar tekst, f.eks. "12.34s".
 function formatTime(ms) {
   return (ms / 1000).toFixed(2) + 's';
+}
+
+
+// --- 3c. LEADERBOARD (lagres i nettleseren) ---
+// localStorage er et lite "minne" i nettleseren som overlever at du lukker fanen.
+// Vi lagrer de 5 beste rundetidene dine der som en JSON-tekst, så du kan jakte
+// på din egen rekord — et lite leaderboard mot deg selv.
+const LB_KEY = 'bilus_leaderboard';   // navnet vi lagrer under
+let leaderboard = loadLeaderboard();  // liste med tider (ms), sortert raskest først
+
+function loadLeaderboard() {
+  try {
+    const raw = localStorage.getItem(LB_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];  // hvis noe er ødelagt eller blokkert: bare start tomt
+  }
+}
+
+function saveLeaderboard() {
+  try {
+    localStorage.setItem(LB_KEY, JSON.stringify(leaderboard));
+  } catch (e) {
+    /* lagring kan være blokkert (privat modus) — da kjører vi bare uten */
+  }
+}
+
+// Legger inn en ny rundetid, sorterer og beholder de 5 beste.
+function recordLapTime(ms) {
+  leaderboard.push(ms);
+  leaderboard.sort((a, b) => a - b);   // minst (raskest) først
+  leaderboard = leaderboard.slice(0, 5);
+  saveLeaderboard();
 }
 
 
@@ -437,13 +472,17 @@ function updateLapCounter() {
     lap.count++;
     const now = performance.now();
     lap.lastLapTime = now - lap.startTime;
-    if (lap.bestLapTime === 0 || lap.lastLapTime < lap.bestLapTime) {
-      lap.bestLapTime = lap.lastLapTime;
-    }
+
+    // Var dette en ny rekord? (raskere enn den beste vi hadde fra før)
+    const oldBest = leaderboard.length ? leaderboard[0] : Infinity;
+    recordLapTime(lap.lastLapTime);
+    if (lap.lastLapTime < oldBest) lap.recordFlash = 180;  // blink i ~3 sekunder
+
     lap.startTime = now;
     lap.passedHalfway = false;
   }
 
+  if (lap.recordFlash > 0) lap.recordFlash--;
   prevCarX = car.x;
 }
 
@@ -674,6 +713,35 @@ function drawScenery() {
   }
 }
 
+// --- 9c. TEGN STARTGRID ---
+// Nummererte startbokser malt på asfalten rett bak mål-linja, trappet i to baner
+// (som en ekte startoppstilling). Plass nr. 1 er der bilen din starter.
+function drawStartGrid() {
+  const lineX = START.x;
+  const laneA = 92, laneB = 128;   // to baner på tvers av vegen
+  const positions = [
+    { x: lineX - 16, y: laneA },
+    { x: lineX - 40, y: laneB },
+    { x: lineX - 64, y: laneA },
+    { x: lineX - 88, y: laneB },
+    { x: lineX - 112, y: laneA },
+    { x: lineX - 136, y: laneB },
+  ];
+
+  ctx.lineWidth = 2;
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  positions.forEach((p, i) => {
+    ctx.fillStyle   = 'rgba(255,255,255,0.12)';   // svakt fyll, ser malt ut
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillRect(p.x - 12, p.y - 8, 24, 16);
+    ctx.strokeRect(p.x - 12, p.y - 8, 24, 16);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillText(i + 1, p.x, p.y + 4);
+  });
+  ctx.textAlign = 'left';
+}
+
 
 // --- 10. TEGN BREMSEMERKER ---
 function drawSkidMarks() {
@@ -870,12 +938,16 @@ function drawSpeedometer() {
 }
 
 
-// --- 13b. TEGN RUNDE-INFO ---
-// Panel øverst til høyre: rundenummer, tid på inneværende runde og beste runde.
+// --- 13b. TEGN RUNDE-INFO + LEADERBOARD ---
+// Panel øverst til høyre: rundenummer, tid på inneværende runde, og en topp-5
+// liste over dine beste tider (lagret i nettleseren).
 function drawLapInfo() {
-  const w = 150, x = canvas.width - w - 10, y = 8;
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.fillRect(x, y, w, 64);
+  const w = 168, x = canvas.width - w - 10, y = 8;
+  const rows = Math.min(leaderboard.length, 5);
+  const h = 66 + (rows > 0 ? rows * 16 + 6 : 14);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(x, y, w, h);
 
   ctx.textAlign = 'left';
   ctx.fillStyle = '#fff';
@@ -886,8 +958,24 @@ function drawLapInfo() {
   const current = performance.now() - lap.startTime;
   ctx.fillText('Tid:  ' + formatTime(current), x + 10, y + 40);
 
-  ctx.fillStyle = '#ffd24a';
-  ctx.fillText('Best: ' + (lap.bestLapTime ? formatTime(lap.bestLapTime) : '--'), x + 10, y + 56);
+  // Overskrift for lista — bytter til blinkende "NY REKORD!" rett etter en rekord
+  if (lap.recordFlash > 0 && Math.floor(lap.recordFlash / 15) % 2 === 0) {
+    ctx.fillStyle = '#ffd24a';
+    ctx.fillText('★ NY REKORD! ★', x + 10, y + 58);
+  } else {
+    ctx.fillStyle = '#9fd0ff';
+    ctx.fillText('Beste tider:', x + 10, y + 58);
+  }
+
+  if (rows === 0) {
+    ctx.fillStyle = '#888';
+    ctx.fillText('(ingen ennå)', x + 14, y + 74);
+  } else {
+    for (let i = 0; i < rows; i++) {
+      ctx.fillStyle = i === 0 ? '#ffd24a' : '#dddddd';  // rekorden i gull
+      ctx.fillText((i + 1) + '.  ' + formatTime(leaderboard[i]), x + 14, y + 74 + i * 16);
+    }
+  }
 }
 
 
@@ -905,6 +993,7 @@ function draw() {
   }
 
   drawTrack();
+  drawStartGrid();
   drawScorches();
   drawSkidMarks();
   drawScenery();

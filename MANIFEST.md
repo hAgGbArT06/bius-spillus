@@ -39,11 +39,12 @@ Ferdig:
 - [x] Brutal eksplosjon (ild, røyk, vrakdeler, sjokkbølge, skjermrysting, brennmerke) + auto-reset
 - [x] Lyd via Web Audio API (motorbrum som følger farten + eksplosjonssmell)
 - [x] Hastighetsmåler (buemåler, grønn→rød)
-- [x] Rundeteller med tidtaker, beste rundetid og rutete start/mål-linje
+- [x] Rundeteller med tidtaker og rutete start/mål-linje
 - [x] Pynt: grantrær og busker i de grønne områdene
+- [x] Leaderboard: dine 5 beste rundetider lagret i nettleseren (localStorage) + «NY REKORD!»-blink
+- [x] Startgrid: nummererte startbokser malt på asfalten bak mål-linja
 
 Gjenstår for å «lukke» fase 1:
-- [ ] Lagre beste rundetid mellom økter (localStorage) — *gjøres først, så vi har en målestokk*
 - [ ] Fintuning av fysikkmotor og kjøreprofil (akselerasjon, grep, drift, friksjon) — mål forbedringer mot lagret rundetid
 - [ ] Flere lyder (drift-skrik, boost-sus, kollisjon)
 - [ ] **Meny / tilstand-system** (start-, pause-, resultat-skjerm) — *forutsetning for fase 2 og 3*
@@ -99,3 +100,4 @@ webhotell snart; konkrete tekniske detaljer (server, protokoll) avklares når de
 | 2026-06-14 | Rundeteller med tidtaker + mål-linje, og grantrær/busker som pynt |
 | 2026-06-14 | Utvidet MANIFEST med veikart i tre faser, avhengigheter og åpne beslutninger |
 | 2026-06-14 | Besluttet online flerspiller for fase 3 (webhotell på vei, detaljer senere) |
+| 2026-06-14 | Leaderboard med 5 beste rundetider (localStorage) + startgrid-markører på asfalten |
