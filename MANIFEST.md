@@ -46,6 +46,7 @@ Ferdig:
 - [x] Fast tidssteg i spilløkken — lik fart på alle skjermer (uavhengig av Hz), rundetider blir sammenlignbare
 - [x] Versjonsnummer nede til venstre (så alle kan sjekke samme versjon)
 - [x] Easter egg: hilsen + vennens rekord ("Entps / #2.75") gror frem som gress oppe til venstre
+- [x] Klikkbar nullstill-knapp for leaderboardet (med to-klikks bekreftelse)
 
 Gjenstår for å «lukke» fase 1:
 - [ ] Fintuning av fysikkmotor og kjøreprofil (akselerasjon, grep, drift, friksjon) — mål forbedringer mot lagret rundetid
@@ -106,3 +107,4 @@ webhotell snart; konkrete tekniske detaljer (server, protokoll) avklares når de
 | 2026-06-14 | Leaderboard med 5 beste rundetider (localStorage) + startgrid-markører på asfalten |
 | 2026-06-14 | Fast tidssteg i spilløkken — spillet kjører likt på alle skjermer uansett oppdateringsfrekvens |
 | 2026-06-14 | Versjonsnummer (v1.1) i hjørnet + easter egg: vennens rekord 2.75 gror frem som gress |
+| 2026-06-14 | Klikkbar nullstill-knapp for leaderboardet (to-klikks bekreftelse) |

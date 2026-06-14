@@ -22,7 +22,8 @@
 //  11.  Tegn bilen
 //  12.  Tegn brennmerker + eksplosjon
 //  13.  Tegn hastighetsmåler
-//  13b. Tegn runde-info
+//  13b. Tegn runde-info + leaderboard
+//  13c. Tegn nullstill-knapp
 //  14.  Tegn alt
 //  15.  Spilløkken
 // =============================================
@@ -334,6 +335,15 @@ function recordLapTime(ms) {
   saveLeaderboard();
 }
 
+// Teller ned bilder mens "Sikker?"-bekreftelsen på nullstill-knappen vises.
+let resetConfirm = 0;
+
+// Tømmer leaderboardet (kalles når knappen er bekreftet med to klikk).
+function clearLeaderboard() {
+  leaderboard = [];
+  saveLeaderboard();
+}
+
 
 // --- 4. BREMSEMERKER ---
 // Når bilen slurer lagres punkter her. Hvert punkt blekner gradvis.
@@ -491,6 +501,28 @@ document.addEventListener('keydown', (e) => {
 
 document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
+// Museklikk: brukes til nullstill-knappen for leaderboardet.
+canvas.addEventListener('click', (e) => {
+  // Regn om museposisjon til canvas-koordinater (canvaset kan vises i annen størrelse)
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+  const r = resetButtonRect();
+  const inside = mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
+
+  if (inside) {
+    if (resetConfirm > 0) {
+      clearLeaderboard();   // andre klikk → bekreftet, slett tidene
+      resetConfirm = 0;
+    } else {
+      resetConfirm = 180;   // første klikk → be om bekreftelse (~3 sek)
+    }
+  } else {
+    resetConfirm = 0;       // klikk utenfor → avbryt bekreftelsen
+  }
+});
+
 
 // --- 7. SONEDETEKSJON ---
 // "Signed distance" til et avrundet rektangel: returnerer negativt tall når
@@ -564,6 +596,8 @@ function updateLapCounter() {
 
 // --- 8. OPPDATER SPILLTILSTAND ---
 function update() {
+  if (resetConfirm > 0) resetConfirm--;   // teller alltid ned (også under eksplosjon)
+
   if (explosion.active) {
     updateExplosion();
     updateScorches();
@@ -1017,13 +1051,27 @@ function drawSpeedometer() {
 // --- 13b. TEGN RUNDE-INFO + LEADERBOARD ---
 // Panel øverst til høyre: rundenummer, tid på inneværende runde, og en topp-5
 // liste over dine beste tider (lagret i nettleseren).
-function drawLapInfo() {
+
+// Hvor stort leaderboard-panelet er (deles av tegning og museklikk-sjekk).
+function lapPanelRect() {
   const w = 168, x = canvas.width - w - 10, y = 8;
   const rows = Math.min(leaderboard.length, 5);
   const h = 66 + (rows > 0 ? rows * 16 + 6 : 14);
+  return { x, y, w, h, rows };
+}
+
+// Nullstill-knappen sitter rett under panelet.
+function resetButtonRect() {
+  const p = lapPanelRect();
+  const w = 150, h = 24;
+  return { x: p.x + p.w - w, y: p.y + p.h + 6, w, h };
+}
+
+function drawLapInfo() {
+  const { x, y, w, rows } = lapPanelRect();
 
   ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.fillRect(x, y, w, h);
+  ctx.fillRect(x, y, w, lapPanelRect().h);
 
   ctx.textAlign = 'left';
   ctx.fillStyle = '#fff';
@@ -1054,6 +1102,26 @@ function drawLapInfo() {
   }
 }
 
+// --- 13c. TEGN NULLSTILL-KNAPP ---
+// Klikkbar knapp under leaderboardet. Krever to klikk (bekreftelse) så tidene
+// ikke slettes ved et uhell.
+function drawResetButton() {
+  const r = resetButtonRect();
+  const confirming = resetConfirm > 0;
+
+  ctx.fillStyle   = confirming ? 'rgba(150,30,30,0.85)' : 'rgba(0,0,0,0.55)';
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.strokeStyle = confirming ? '#ff6655' : '#666';
+  ctx.lineWidth   = 1.5;
+  ctx.strokeRect(r.x, r.y, r.w, r.h);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(confirming ? 'Sikker? Klikk igjen' : '↺ Nullstill tider', r.x + r.w / 2, r.y + r.h / 2 + 4);
+  ctx.textAlign = 'left';
+}
+
 
 // --- 14. TEGN ALT ---
 function draw() {
@@ -1081,6 +1149,7 @@ function draw() {
 
   drawSpeedometer();
   drawLapInfo();
+  drawResetButton();
 
   // Måler tekstbredden først, så boksen alltid blir bred nok (ingen overflyt).
   const hint = 'WASD / piltaster  •  Shift = boost  •  Mellomrom = drift';
