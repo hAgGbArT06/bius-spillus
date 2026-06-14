@@ -54,12 +54,13 @@ Ferdig:
 - [x] Ekte racing-start: bilen spawner på pole (plass 1) bak startlinja, og klokka starter først når du krysser linja
 - [x] Dekkspor: 2 spor (bakhjul) normalt, alle 4 hjul ved kraftig driftvinkel
 - [x] Mellomrom = ekte drift-knapp (beholder fart, lavt grep, skarp sving = lange drifter)
+- [x] Fintuning av fysikkmotor og kjøreprofil — brukeren er fornøyd med kjørefølelsen
+- [x] Lyder: motorbrum og eksplosjonssmell (drift-skrik og boost-sus ble testet, men fjernet — brukeren likte dem ikke)
+- [x] Meny / tilstand-system: startmeny (tre-bakgrunn), banevalg, innstillinger (volum + bilfarge), Esc = tilbake til meny
+- [x] Per-bane leaderboard (Rektangelen beholder gamle tider) — klargjort for flere baner i fase 2
 
 Gjenstår for å «lukke» fase 1:
-- [~] Fintuning av fysikkmotor og kjøreprofil (akselerasjon, grep, drift, friksjon) — PÅGÅR. Nylig: «fri»/coasting når ingen knapper trykkes (må bremse aktivt)
-- [ ] Flere lyder (drift-skrik, boost-sus, kollisjon)
-- [ ] **Meny / tilstand-system** (start-, pause-, resultat-skjerm) — *forutsetning for fase 2 og 3*
-- [ ] **Data-drevet bane** (flytte den hardkodede banen inn i en bane-definisjon) — *forutsetning for fase 2 og 3*
+- [ ] **Data-drevet bane** (flytte den hardkodede bane-geometrien inn i bane-definisjonen) — *forutsetning for fase 2.* Påbegynt: `TRACKS`-liste finnes, men selve formen er fortsatt hardkodet
 
 ### Fase 2 — Baner & turnering
 Mål: flere baner å velge mellom, og en turnering (cup) å konkurrere i.
@@ -121,3 +122,7 @@ webhotell snart; konkrete tekniske detaljer (server, protokoll) avklares når de
 | 2026-06-14 | Dekkspor per hjul — fire parallelle spor i stedet for én senterlinje (v1.5) |
 | 2026-06-14 | Drift-knapp (mellomrom) beholder fart + lavt grep for lange drifter, 2 spor normalt / 4 ved stor vinkel (v1.6) |
 | 2026-06-14 | Drift-tuning: mer fart beholdt sidelengs (lavere grep + høyere friksjon), mildere sving for finjustering (v1.7) |
+| 2026-06-14 | Lagt til drift-skrik og boost-sus (syntetisert støy via Web Audio) (v1.8) |
+| 2026-06-14 | Drift-skrik dempet, høyere terskel (kun ved stor vinkel) og mykere klang (v1.9) |
+| 2026-06-14 | Fjernet drift-skrik og boost-sus igjen (likte dem ikke) — beholder motor + eksplosjon (v2.0) |
+| 2026-06-14 | Meny-system: startmeny, banevalg, innstillinger (volum + bilfarge), per-bane leaderboard (v2.1) |

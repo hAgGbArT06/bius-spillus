@@ -36,7 +36,57 @@ const ctx = canvas.getContext('2d');
 
 // Versjonsnummer — vises nede til venstre, så man enkelt kan sjekke at alle
 // spiller samme versjon (nyttig hvis noen har en gammel, bufret kopi).
-const VERSION = 'v1.7';
+const VERSION = 'v2.1';
+
+
+// --- 1c. SPILLTILSTAND, BANER OG INNSTILLINGER ---
+// Spillet kan være i ulike "skjermer" (tilstander). update()/draw() retter seg
+// etter denne.  'menu' = startmeny, 'tracks' = velg bane, 'settings' = innstillinger,
+// 'race' = selve kjøringen.
+let gameState = 'menu';
+
+// Baner. Hver bane har sin egen lagrings-nøkkel for leaderboardet. Rektangelen
+// bruker 'bilus_leaderboard' — den samme som før — så gamle tider beholdes!
+const TRACKS = [
+  { id: 'rektangel', name: 'Rektangelen', lbKey: 'bilus_leaderboard' },
+];
+let currentTrack = TRACKS[0];
+
+// Fargevalg for bilen (innstillinger)
+const CAR_COLORS = ['#e63030', '#3070e6', '#30b050', '#e6c020', '#b030c0', '#e08020', '#dddddd', '#1a1a1a'];
+
+// Innstillinger lagres i nettleseren slik at de huskes mellom økter.
+const SETTINGS_KEY = 'bilus_settings';
+const settings = loadSettings();
+
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
+    return { volume: s.volume ?? 0.7, carColor: s.carColor ?? '#e63030' };
+  } catch (e) {
+    return { volume: 0.7, carColor: '#e63030' };
+  }
+}
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignorer */ }
+}
+
+// Knappene på gjeldende meny-skjerm bygges på nytt hver frame (se draw-funksjonene).
+let uiButtons = [];
+let mouseX = 0, mouseY = 0;   // musens posisjon i canvas-koordinater (for hover)
+
+// Regner om en musehendelse til canvas-koordinater (canvaset kan vises i annen størrelse).
+function canvasMouse(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) * (canvas.width / rect.width),
+    y: (e.clientY - rect.top) * (canvas.height / rect.height),
+  };
+}
+// Er punktet (mx,my) inni rektangelet r?
+function hitRect(r, mx, my) {
+  return mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
+}
 
 
 // --- 1b. LYD (Web Audio API) ---
@@ -47,10 +97,16 @@ let audioCtx = null;
 let engineOsc = null;     // motorlyd: en tone som endrer pitch med farten
 let engineGain = null;    // hvor høy motorlyden er
 let engineFilter = null;  // lavpassfilter som demper de skarpe overtonene
+let masterGain = null;    // hovedvolum — alt lyd går gjennom denne (styres i innstillinger)
 
 function initAudio() {
   if (audioCtx) return;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // Hovedvolum: alt annet kobles hit, og denne kobles til høyttaleren.
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = settings.volume;
+  masterGain.connect(audioCtx.destination);
 
   // Motoren er en "trekant"-bølge — mykere og mindre summende enn sagtann.
   engineOsc  = audioCtx.createOscillator();
@@ -61,7 +117,7 @@ function initAudio() {
   engineFilter.type = 'lowpass';      // slipper bare gjennom de lave, runde tonene
   engineFilter.frequency.value = 400;
   engineGain.gain.value = 0;          // starter stille
-  engineOsc.connect(engineFilter).connect(engineGain).connect(audioCtx.destination);
+  engineOsc.connect(engineFilter).connect(engineGain).connect(masterGain);
   engineOsc.start();
 
   // Vibrato: en treg "LFO" som vugger pitchen ±3 Hz, så lyden føles levende
@@ -102,7 +158,7 @@ function playExplosionSound() {
   boom.frequency.exponentialRampToValueAtTime(28, now + 0.5);
   boomGain.gain.setValueAtTime(1.0, now);
   boomGain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
-  boom.connect(boomGain).connect(audioCtx.destination);
+  boom.connect(boomGain).connect(masterGain);
   boom.start(now); boom.stop(now + 0.7);
 
   // 2) Hvit støy gjennom et lavpassfilter = "smell"/rasling
@@ -119,8 +175,15 @@ function playExplosionSound() {
   const noiseGain = audioCtx.createGain();
   noiseGain.gain.setValueAtTime(0.9, now);
   noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-  noise.connect(lp).connect(noiseGain).connect(audioCtx.destination);
+  noise.connect(lp).connect(noiseGain).connect(masterGain);
   noise.start(now); noise.stop(now + 0.8);
+}
+
+// Setter hovedvolumet (0–1) og lagrer det.
+function setVolume(v) {
+  settings.volume = Math.max(0, Math.min(1, v));
+  if (masterGain) masterGain.gain.value = settings.volume;
+  saveSettings();
 }
 
 
@@ -321,16 +384,15 @@ function formatTime(ms) {
 }
 
 
-// --- 3c. LEADERBOARD (lagres i nettleseren) ---
+// --- 3c. LEADERBOARD (lagres i nettleseren, per bane) ---
 // localStorage er et lite "minne" i nettleseren som overlever at du lukker fanen.
-// Vi lagrer de 5 beste rundetidene dine der som en JSON-tekst, så du kan jakte
-// på din egen rekord — et lite leaderboard mot deg selv.
-const LB_KEY = 'bilus_leaderboard';   // navnet vi lagrer under
-let leaderboard = loadLeaderboard();  // liste med tider (ms), sortert raskest først
+// Hver bane har sin egen liste (currentTrack.lbKey). Rektangelen bruker den
+// gamle nøkkelen, så tidene du allerede har, beholdes.
+let leaderboard = loadLeaderboard(currentTrack.lbKey);  // tider (ms), raskest først
 
-function loadLeaderboard() {
+function loadLeaderboard(key) {
   try {
-    const raw = localStorage.getItem(LB_KEY);
+    const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
     return [];  // hvis noe er ødelagt eller blokkert: bare start tomt
@@ -339,7 +401,7 @@ function loadLeaderboard() {
 
 function saveLeaderboard() {
   try {
-    localStorage.setItem(LB_KEY, JSON.stringify(leaderboard));
+    localStorage.setItem(currentTrack.lbKey, JSON.stringify(leaderboard));
   } catch (e) {
     /* lagring kan være blokkert (privat modus) — da kjører vi bare uten */
   }
@@ -529,6 +591,8 @@ document.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   keys[k] = true;
   initAudio();  // starter lyden ved første tastetrykk (nettleserkrav)
+  // Escape → tilbake til startmenyen
+  if (k === 'escape') gameState = 'menu';
   // Hindrer scrolling med piltaster og mellomrom
   if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) {
     e.preventDefault();
@@ -537,27 +601,46 @@ document.addEventListener('keydown', (e) => {
 
 document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
-// Museklikk: brukes til nullstill-knappen for leaderboardet.
+// Hold styr på musens posisjon (for hover-effekt på knapper).
+canvas.addEventListener('mousemove', (e) => {
+  const m = canvasMouse(e);
+  mouseX = m.x; mouseY = m.y;
+});
+
+// Museklikk: ruter til riktig håndtering ut fra hvilken skjerm vi er på.
 canvas.addEventListener('click', (e) => {
-  // Regn om museposisjon til canvas-koordinater (canvaset kan vises i annen størrelse)
-  const rect = canvas.getBoundingClientRect();
-  const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
-  const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+  const m = canvasMouse(e);
+  initAudio();   // et klikk teller som "brukerhandling" → lyden kan starte
 
-  const r = resetButtonRect();
-  const inside = mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
-
-  if (inside) {
-    if (resetConfirm > 0) {
-      clearLeaderboard();   // andre klikk → bekreftet, slett tidene
-      resetConfirm = 0;
-    } else {
-      resetConfirm = 180;   // første klikk → be om bekreftelse (~3 sek)
-    }
+  if (gameState === 'race') {
+    handleRaceClick(m.x, m.y);
+  } else if (gameState === 'settings') {
+    handleSettingsClick(m.x, m.y);
   } else {
-    resetConfirm = 0;       // klikk utenfor → avbryt bekreftelsen
+    // meny og banevalg: bare vanlige knapper
+    for (const b of uiButtons) if (hitRect(b, m.x, m.y)) { b.onClick(); return; }
   }
 });
+
+// Klikk under løpet: nullstill-knappen (med to-klikks bekreftelse).
+function handleRaceClick(mx, my) {
+  if (hitRect(resetButtonRect(), mx, my)) {
+    if (resetConfirm > 0) { clearLeaderboard(); resetConfirm = 0; }
+    else resetConfirm = 180;
+  } else {
+    resetConfirm = 0;   // klikk utenfor → avbryt bekreftelsen
+  }
+}
+
+// Klikk i innstillinger: volum-bar, fargevalg eller Tilbake-knappen.
+function handleSettingsClick(mx, my) {
+  const vb = volumeBarRect();
+  if (hitRect(vb, mx, my)) { setVolume((mx - vb.x) / vb.w); return; }
+  for (const s of swatchRects()) {
+    if (hitRect(s, mx, my)) { settings.carColor = s.color; saveSettings(); return; }
+  }
+  for (const b of uiButtons) if (hitRect(b, mx, my)) { b.onClick(); return; }
+}
 
 
 // --- 7. SONEDETEKSJON ---
@@ -742,8 +825,8 @@ function update() {
     triggerExplosion();
   }
 
-  // Bremsemerker vises når bilen slurer (stor vinkelforskjell mellom
-  // fartretning og bilretning, eller håndbrekk aktivt)
+  // Bremsemerker når bilen slurer (stor vinkelforskjell mellom fartretning og
+  // bilretning, eller håndbrekk aktivt)
   if (speed > 1) {
     const velAngle = Math.atan2(car.vy, car.vx);
     let diff = Math.abs(velAngle - car.angle) % (Math.PI * 2);
@@ -919,7 +1002,7 @@ function drawCar() {
   ctx.translate(car.x, car.y);
   ctx.rotate(car.angle);
 
-  ctx.fillStyle = '#e63030';
+  ctx.fillStyle = settings.carColor;   // valgt i innstillinger
   ctx.fillRect(-car.width / 2, -car.height / 2, car.width, car.height);
 
   ctx.fillStyle = '#aad4f5';
@@ -1226,8 +1309,8 @@ function drawResetButton() {
 }
 
 
-// --- 14. TEGN ALT ---
-function draw() {
+// --- 14. TEGN SELVE LØPET ---
+function drawRace() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // Skjermrysting under eksplosjon: flytt hele bildet litt tilfeldig.
@@ -1263,12 +1346,175 @@ function draw() {
   ctx.fillRect(8, 8, hintW + 16, 26);
   ctx.fillStyle = '#fff';
   ctx.fillText(hint, 16, 26);
+}
 
-  // Versjonsnummer nede til venstre (diskret)
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+
+// --- 14b. MENY-SKJERMER ---
+// Versjonsnummeret tegnes i alle skjermer (nede til venstre).
+function drawVersion() {
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
   ctx.font = '11px monospace';
   ctx.textAlign = 'left';
   ctx.fillText(VERSION, 10, canvas.height - 10);
+}
+
+// Tre-bakgrunn i mørk eik som dekker hele skjermen (samme stil som billboardet).
+function drawWoodBackground() {
+  const planks = 10;
+  const pw = canvas.width / planks;
+  for (let i = 0; i < planks; i++) {
+    ctx.fillStyle = i % 2 === 0 ? '#43311d' : '#392917';
+    ctx.fillRect(i * pw, 0, pw, canvas.height);
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(i * pw, 0); ctx.lineTo(i * pw, canvas.height);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = '#241a0e';
+  ctx.lineWidth = 12;
+  ctx.strokeRect(0, 0, canvas.width, canvas.height);
+}
+
+// Legg til en klikkbar knapp (bygges på nytt hver frame for gjeldende skjerm).
+function addButton(x, y, w, h, label, onClick) {
+  uiButtons.push({ x, y, w, h, label, onClick });
+}
+
+// Tegn alle knappene i uiButtons, med lys ramme og hover-effekt.
+function drawButtons() {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const b of uiButtons) {
+    const hover = hitRect(b, mouseX, mouseY);
+    ctx.fillStyle   = hover ? 'rgba(90,60,25,0.95)' : 'rgba(0,0,0,0.4)';
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = hover ? '#ffd98a' : '#caa15a';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 20px monospace';
+    ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 1);
+  }
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+// Startmeny: tittel + Start/Innstillinger.
+function drawMenu() {
+  uiButtons = [];
+  drawWoodBackground();
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,225,180,0.92)';
+  ctx.font = 'bold 60px monospace';
+  ctx.fillText('BILUS-SPILLUS', canvas.width / 2, 150);
+  ctx.fillStyle = 'rgba(255,225,180,0.5)';
+  ctx.font = '18px monospace';
+  ctx.fillText('et lite bilspill', canvas.width / 2, 188);
+  ctx.textAlign = 'left';
+
+  const bw = 280, bh = 64, bx = canvas.width / 2 - bw / 2;
+  addButton(bx, 270, bw, bh, 'START', () => { gameState = 'tracks'; });
+  addButton(bx, 354, bw, bh, 'INNSTILLINGER', () => { gameState = 'settings'; });
+  drawButtons();
+}
+
+// Velg bane: én knapp per bane + Tilbake.
+function drawTracksScreen() {
+  uiButtons = [];
+  drawWoodBackground();
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,225,180,0.92)';
+  ctx.font = 'bold 40px monospace';
+  ctx.fillText('VELG BANE', canvas.width / 2, 90);
+  ctx.textAlign = 'left';
+
+  const bw = 340, bh = 64, bx = canvas.width / 2 - bw / 2;
+  let by = 160;
+  for (const t of TRACKS) {
+    addButton(bx, by, bw, bh, t.name, () => selectTrack(t));
+    by += 84;
+  }
+  addButton(30, canvas.height - 70, 160, 46, '‹ Tilbake', () => { gameState = 'menu'; });
+  drawButtons();
+}
+
+// Velg bane → last den banens tider, sett bilen på pole og start løpet.
+function selectTrack(t) {
+  currentTrack = t;
+  leaderboard = loadLeaderboard(t.lbKey);
+  resetCar();
+  lap.count = 0;
+  lap.lastLapTime = 0;
+  gameState = 'race';
+}
+
+// Hjelpere for innstillinger-skjermen (deles av tegning og klikk).
+function volumeBarRect() {
+  return { x: canvas.width / 2 - 150, y: 175, w: 300, h: 22 };
+}
+function swatchRects() {
+  const size = 46, gap = 12, n = CAR_COLORS.length;
+  const totalW = n * size + (n - 1) * gap;
+  const x0 = canvas.width / 2 - totalW / 2, y = 320;
+  return CAR_COLORS.map((color, i) => ({ x: x0 + i * (size + gap), y, w: size, h: size, color }));
+}
+
+// Innstillinger: volum-bar + fargevalg + Tilbake.
+function drawSettingsScreen() {
+  uiButtons = [];
+  drawWoodBackground();
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,225,180,0.92)';
+  ctx.font = 'bold 40px monospace';
+  ctx.fillText('INNSTILLINGER', canvas.width / 2, 80);
+
+  // --- Lyd ---
+  ctx.fillStyle = '#fff';
+  ctx.font = '20px monospace';
+  ctx.fillText('Lyd: ' + Math.round(settings.volume * 100) + '%', canvas.width / 2, 145);
+  const vb = volumeBarRect();
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';            // bakgrunnsspor
+  ctx.fillRect(vb.x, vb.y, vb.w, vb.h);
+  ctx.fillStyle = '#caa15a';                     // fylt del = volum
+  ctx.fillRect(vb.x, vb.y, vb.w * settings.volume, vb.h);
+  ctx.strokeStyle = '#241a0e';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(vb.x, vb.y, vb.w, vb.h);
+
+  // --- Bilfarge ---
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Bilfarge', canvas.width / 2, 295);
+  for (const s of swatchRects()) {
+    ctx.fillStyle = s.color;
+    ctx.fillRect(s.x, s.y, s.w, s.h);
+    const selected = s.color === settings.carColor;
+    ctx.strokeStyle = selected ? '#ffffff' : '#241a0e';
+    ctx.lineWidth = selected ? 4 : 2;
+    ctx.strokeRect(s.x, s.y, s.w, s.h);
+  }
+  ctx.textAlign = 'left';
+
+  addButton(30, canvas.height - 70, 160, 46, '‹ Tilbake', () => { saveSettings(); gameState = 'menu'; });
+  drawButtons();
+}
+
+
+// --- 14. TEGN ALT (velger skjerm) ---
+function draw() {
+  if (gameState === 'race') {
+    drawRace();
+  } else if (gameState === 'tracks') {
+    drawTracksScreen();
+  } else if (gameState === 'settings') {
+    drawSettingsScreen();
+  } else {
+    drawMenu();
+  }
+  drawVersion();   // alltid synlig, i alle skjermer
 }
 
 
@@ -1294,10 +1540,14 @@ function gameLoop(now) {
   // Har fanen ligget i bakgrunnen lenge, ikke "ta igjen" alt på én gang
   if (accumulator > 250) accumulator = 250;
 
-  // Kjør fysikken i faste steg til vi har tatt igjen sanntiden
-  while (accumulator >= FIXED_DT) {
-    update();
-    accumulator -= FIXED_DT;
+  if (gameState === 'race') {
+    // Kjør fysikken i faste steg til vi har tatt igjen sanntiden
+    while (accumulator >= FIXED_DT) {
+      update();
+      accumulator -= FIXED_DT;
+    }
+  } else {
+    accumulator = 0;   // ingen simulering i menyene
   }
 
   draw();
