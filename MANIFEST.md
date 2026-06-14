@@ -68,12 +68,14 @@ Ferdig:
 Mål: flere baner å velge mellom, og en turnering (cup) å konkurrere i.
 Bygger direkte på singleplayer + rundetider fra fase 1.
 
-- [ ] Data-drevet bane-format (krever «data-drevet bane» fra fase 1)
-- [ ] Flere baner med ulik layout (2–3 stk)
-- [ ] Banevelger i menyen
+- [x] Data-drevet bane-format — to typer: `oval` (Rektangelen) og `path` (midtlinje av punkter + vegbredde, for vilkårlige former)
+- [~] Flere baner med ulik layout: Rektangelen (oval) + GP-banen (path, med sentralt hårnål-parti etter brukerens skisse). Flere kan legges til.
+- [x] Banevelger i menyen (lister alle baner i `TRACKS` automatisk)
 - [ ] AI-motstandere (datastyrte biler som følger banen) — *gjør løp til ekte konkurranse*
 - [ ] Turneringsmodus: serie av løp, poeng per plassering, sammenlagt-tabell
 - [ ] Lagre turneringsresultater (localStorage)
+
+**Path-banemotor:** bane = lukket sløyfe av punkter + `roadWidth`. Tegnes som tykke streker (sand→asfalt→stiplet). Sone og runder via avstand/"progress" til midtlinja — fungerer for alle former.
 
 ### Fase 3 — Flerspiller (ONLINE)
 Mål: flere spillere konkurrerer over nett. Største teknologispranget — gjøres sist.
@@ -131,3 +133,5 @@ webhotell snart; konkrete tekniske detaljer (server, protokoll) avklares når de
 | 2026-06-14 | Data-drevet bane: all geometri flyttet inn i TRACKS — FASE 1 LUKKET (v2.2) |
 | 2026-06-14 | Pausemeny (Esc / pause-ikon): Innstillinger + Tilbake til meny, fryser rundeklokka (v2.3) |
 | 2026-06-14 | Motorlyd dempes i alle ikke-kjørende tilstander (meny, pause osv.) (v2.4) |
+| 2026-06-15 | FASE 2 start: path-banemotor + GP-banen (rette strekk + skarpe/lange svinger) (v2.5) |
+| 2026-06-15 | GP-banen omformet etter brukerens skisse (sentralt hårnål-parti); easter egg vises kun på Rektangelen (v2.6) |

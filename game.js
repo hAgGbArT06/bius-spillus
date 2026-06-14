@@ -36,7 +36,7 @@ const ctx = canvas.getContext('2d');
 
 // Versjonsnummer — vises nede til venstre, så man enkelt kan sjekke at alle
 // spiller samme versjon (nyttig hvis noen har en gammel, bufret kopi).
-const VERSION = 'v2.4';
+const VERSION = 'v2.6';
 
 
 // --- 1c. SPILLTILSTAND, BANER OG INNSTILLINGER ---
@@ -91,21 +91,107 @@ const TRACKS = [
       { x: 774, y: 300, s: 14, type: 'bush' },
     ],
   },
+
+  // GP-banen: type 'path' — definert som en MIDTLINJE av punkter (en lukket
+  // sløyfe) med en vegbredde. Da kan banen ha rette strekk, hårnåler og lange
+  // sveip — alt etter hvor punktene legges.  Kjøreretning = rekkefølgen i lista.
+  {
+    id: 'gp',
+    name: 'GP-banen',
+    lbKey: 'bilus_gp',
+    type: 'path',
+    buffer: 18,
+    roadWidth: 64,
+    // Midtlinje (med klokka fra start). Langt toppstrekk, sveipende svinger på
+    // sidene, en skarp venstre nederst — og et sentralt HÅRNÅL-parti som stikker
+    // opp i midten og deler innmarken (slik du tegnet).
+    path: [
+      { x: 450, y: 105 },  // 0  = start/mål (på toppstrekket)
+      { x: 620, y: 108 },  // 1  toppstrekk
+      { x: 696, y: 195 },  // 2  sving 1 (sveip ned, høyre)
+      { x: 696, y: 330 },  // 3  høyre bakstrekk
+      { x: 640, y: 458 },  // 4  sving 2 (sveip mot bunnen)
+      { x: 540, y: 498 },  // 5  bunnstrekk (høyre)
+      { x: 480, y: 415 },  // 6  inn i hårnåla (opp)
+      { x: 470, y: 300 },  // 7  hårnål høyre ben
+      { x: 405, y: 240 },  // 8  hårnål-tupp (midten)
+      { x: 340, y: 300 },  // 9  hårnål venstre ben
+      { x: 330, y: 415 },  // 10 ut av hårnåla (ned)
+      { x: 180, y: 498 },  // 11 bunnstrekk (venstre)
+      { x: 90,  y: 360 },  // 12 sving 3 (skarp venstre)
+      { x: 118, y: 200 },  // 13 venstre strekk opp
+      { x: 195, y: 120 },  // 14 sving 4 (sveip)
+      { x: 250, y: 105 },  // 15 inn på toppstrekket (grid-området)
+    ],
+    start: { x: 420, y: 90, angle: 0 },                 // pole, bak startlinja
+    grid:  { laneA: 90, laneB: 120, firstX: 420, stepX: 26, count: 6 },
+    scenery: [
+      { x: 225, y: 300, s: 24, type: 'tree' },
+      { x: 560, y: 330, s: 24, type: 'tree' },
+      { x: 405, y: 515, s: 22, type: 'tree' },
+      { x: 300, y: 185, s: 16, type: 'bush' },
+      { x: 520, y: 200, s: 16, type: 'bush' },
+      { x: 40, y: 50,  s: 18, type: 'tree' },
+      { x: 40, y: 560, s: 18, type: 'tree' },
+      { x: 740, y: 560, s: 18, type: 'tree' },
+    ],
+  },
 ];
 
 // "Aktiv bane"-pekere. Resten av koden leser fra disse, og applyTrackGeometry()
 // peker dem om når en bane velges. Slik slipper vi å skrive currentTrack.geo... overalt.
-let currentTrack, track, BUFFER, LINE_X, GRID, START, scenery;
+let currentTrack, trackType, track, BUFFER, LINE_X, GRID, START, scenery;
+let trackPath, roadWidth, segLen = [], totalLen = 0;   // for 'path'-baner
 
 function applyTrackGeometry(t) {
   currentTrack = t;
-  track   = t.geo;
+  trackType = t.type || 'oval';
   BUFFER  = t.buffer;
-  LINE_X  = t.lineX;
   GRID    = t.grid;
   START   = t.start;
   scenery = t.scenery;
+  if (trackType === 'oval') {
+    track  = t.geo;
+    LINE_X = t.lineX;
+  } else {
+    trackPath = t.path;
+    roadWidth = t.roadWidth;
+    bakePath();   // regn ut lengder for fart-uavhengig "progress" rundt banen
+  }
 }
+
+// Forhåndsregner lengden på hvert segment + total lengde (brukes til "progress").
+function bakePath() {
+  segLen = [];
+  totalLen = 0;
+  for (let i = 0; i < trackPath.length; i++) {
+    const a = trackPath[i], b = trackPath[(i + 1) % trackPath.length];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    segLen.push(len);
+    totalLen += len;
+  }
+}
+
+// Nærmeste punkt på midtlinja: returnerer avstand + "progress" (0–1 rundt sløyfa).
+function nearestOnPath(px, py) {
+  let best = Infinity, bestProg = 0, acc = 0;
+  for (let i = 0; i < trackPath.length; i++) {
+    const a = trackPath[i], b = trackPath[(i + 1) % trackPath.length];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    let t = len2 ? ((px - a.x) * dx + (py - a.y) * dy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const cx = a.x + dx * t, cy = a.y + dy * t;
+    const d = Math.hypot(px - cx, py - cy);
+    if (d < best) {
+      best = d;
+      bestProg = (acc + segLen[i] * t) / totalLen;
+    }
+    acc += segLen[i];
+  }
+  return { dist: best, progress: bestProg };
+}
+
 applyTrackGeometry(TRACKS[0]);   // standardbane ved oppstart
 
 // Fargevalg for bilen (innstillinger)
@@ -383,6 +469,7 @@ function resetCar() {
   for (const k in keys) keys[k] = false;
   // En død avbryter runden: start tiden på nytt og glem halvveis-sjekkpunktet.
   prevCarX = START.x;
+  if (trackType === 'path') lap.prevProgress = nearestOnPath(START.x, START.y).progress;
   lap.started = false;        // klokka venter til du krysser startlinja igjen
   lap.passedHalfway = false;
 }
@@ -400,6 +487,7 @@ const lap = {
   startTime: 0,          // tidspunktet (ms) inneværende runde startet
   lastLapTime: 0,        // forrige rundetid (ms)
   recordFlash: 0,        // teller ned bilder mens "NY REKORD!" blinker
+  prevProgress: 0,       // forrige "progress" rundt path-baner (0–1)
 };
 let prevCarX = START.x;  // bilens x forrige bilde — brukes til å oppdage kryssing
 
@@ -689,17 +777,22 @@ function sdRoundRect(px, py, x, y, w, h, r) {
 }
 
 function getCarZone() {
+  // PATH-baner: avstand til midtlinja bestemmer sonen.
+  if (trackType === 'path') {
+    const d = nearestOnPath(car.x, car.y).dist;
+    const half = roadWidth / 2;
+    if (d <= half) return 'road';
+    if (d <= half + BUFFER) return 'buffer';
+    return 'offroad';
+  }
+
+  // OVAL-baner: signed distance til ytre/indre avrundet rektangel.
   const t = track;
   const px = car.x, py = car.y;
-
-  // Ytterkant av hele banen, og gressplenen i midten
   const sdOuter = sdRoundRect(px, py, t.outerX, t.outerY, t.outerW, t.outerH, t.cornerR);
   const sdGrass = sdRoundRect(px, py, t.innerX, t.innerY, t.innerW, t.innerH, t.cornerR - 20);
-
-  // Utenfor banen, eller inne på gressplenen = død
   if (sdOuter > 0 || sdGrass < 0) return 'offroad';
 
-  // Trygg asfalt: innenfor den grå flaten OG utenfor den indre sandstripa
   const sdSafe = sdRoundRect(px, py,
     t.outerX + BUFFER, t.outerY + BUFFER,
     t.outerW - BUFFER * 2, t.outerH - BUFFER * 2, t.cornerR - 12);
@@ -711,44 +804,47 @@ function getCarZone() {
   return 'buffer';  // ellers: sandstripa (bremser)
 }
 
+// Felles: registrer at bilen krysset start/mål-linja på vei FRAMOVER.
+// Første kryssing starter klokka; senere kryssinger fullfører en runde
+// (men bare hvis halvveis-sjekkpunktet er passert — hindrer juks).
+function registerStartLineCross() {
+  if (!lap.started) {
+    lap.started = true;
+    lap.startTime = performance.now();
+    lap.passedHalfway = false;
+  } else if (lap.passedHalfway) {
+    lap.count++;
+    const now = performance.now();
+    lap.lastLapTime = now - lap.startTime;
+    const oldBest = leaderboard.length ? leaderboard[0] : Infinity;
+    recordLapTime(lap.lastLapTime);
+    if (lap.lastLapTime < oldBest) lap.recordFlash = 180;  // blink i ~3 sekunder
+    lap.startTime = now;
+    lap.passedHalfway = false;
+  }
+}
+
 // Sjekker om bilen har krysset mål-linja eller halvveis-sjekkpunktet.
 function updateLapCounter() {
-  const lineX = LINE_X;
-  // Øvre vegbånd (der mål-linja er) og nedre vegbånd (halvveis)
-  const inTopBand    = car.y > track.outerY && car.y < track.innerY;
-  const inBottomBand = car.y > track.innerY + track.innerH &&
-                       car.y < track.outerY + track.outerH;
-
-  // Nederst: kryss linja (uansett retning) → halvveis-sjekkpunkt passert
-  if (inBottomBand && (prevCarX - lineX) * (car.x - lineX) < 0) {
-    lap.passedHalfway = true;
-  }
-
-  // Øverst: kryss mot HØYRE (venstre→høyre)
-  if (inTopBand && prevCarX < lineX && car.x >= lineX) {
-    if (!lap.started) {
-      // Aller første kryssing fra grid → start klokka (ingen runde fullført ennå)
-      lap.started = true;
-      lap.startTime = performance.now();
-      lap.passedHalfway = false;
-    } else if (lap.passedHalfway) {
-      // Fullført runde
-      lap.count++;
-      const now = performance.now();
-      lap.lastLapTime = now - lap.startTime;
-
-      // Var dette en ny rekord? (raskere enn den beste vi hadde fra før)
-      const oldBest = leaderboard.length ? leaderboard[0] : Infinity;
-      recordLapTime(lap.lastLapTime);
-      if (lap.lastLapTime < oldBest) lap.recordFlash = 180;  // blink i ~3 sekunder
-
-      lap.startTime = now;
-      lap.passedHalfway = false;
-    }
+  if (trackType === 'path') {
+    // "progress" = hvor langt rundt sløyfa bilen er (0–1). En runde fullføres når
+    // den hopper fra ~1 tilbake til ~0 (forover over startlinja).
+    const prog = nearestOnPath(car.x, car.y).progress;
+    const prev = lap.prevProgress;
+    if (prog > 0.45 && prog < 0.55) lap.passedHalfway = true;   // nådd midten av banen
+    if (prev > 0.7 && prog < 0.3) registerStartLineCross();     // forover over linja
+    lap.prevProgress = prog;
+  } else {
+    const lineX = LINE_X;
+    const inTopBand    = car.y > track.outerY && car.y < track.innerY;
+    const inBottomBand = car.y > track.innerY + track.innerH &&
+                         car.y < track.outerY + track.outerH;
+    if (inBottomBand && (prevCarX - lineX) * (car.x - lineX) < 0) lap.passedHalfway = true;
+    if (inTopBand && prevCarX < lineX && car.x >= lineX) registerStartLineCross();
+    prevCarX = car.x;
   }
 
   if (lap.recordFlash > 0) lap.recordFlash--;
-  prevCarX = car.x;
 }
 
 
@@ -878,7 +974,9 @@ function update() {
 // --- 9. TEGN BANEN ---
 function drawTrack() {
   ctx.fillStyle = '#3a7d34';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);   // gress overalt
+
+  if (trackType === 'path') { drawPathTrack(); return; }
 
   ctx.fillStyle = '#c8a840';
   roundRect(track.outerX, track.outerY, track.outerW, track.outerH, track.cornerR);
@@ -932,6 +1030,54 @@ function drawTrack() {
       ctx.fillRect(lx - sq + col * sq, yy, sq, Math.min(sq, y1 - yy));
     }
   }
+}
+
+// Tegner en PATH-bane ved å "tegne tykke streker" langs midtlinja:
+// sand (bredest), så asfalt, så stiplet midtlinje. Runde skjøter gir fine svinger.
+function drawPathTrack() {
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  const tracePath = () => {
+    ctx.beginPath();
+    ctx.moveTo(trackPath[0].x, trackPath[0].y);
+    for (let i = 1; i < trackPath.length; i++) ctx.lineTo(trackPath[i].x, trackPath[i].y);
+    ctx.closePath();
+  };
+
+  ctx.strokeStyle = '#c8a840';                 // sandstripe (bredest)
+  ctx.lineWidth = roadWidth + BUFFER * 2;
+  tracePath(); ctx.stroke();
+
+  ctx.strokeStyle = '#888';                    // asfalt
+  ctx.lineWidth = roadWidth;
+  tracePath(); ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';   // stiplet midtlinje
+  ctx.lineWidth = 2;
+  ctx.setLineDash([18, 16]);
+  tracePath(); ctx.stroke();
+  ctx.setLineDash([]);
+
+  drawPathStartLine();
+}
+
+// Rutete start/mål-linje på tvers av vegen ved path[0], vendt etter kjøreretningen.
+function drawPathStartLine() {
+  const a = trackPath[0], b = trackPath[1];
+  const ang = Math.atan2(b.y - a.y, b.x - a.x);
+  const half = roadWidth / 2;
+  const sq = 8;
+  ctx.save();
+  ctx.translate(a.x, a.y);
+  ctx.rotate(ang);                 // lokal x = langs vegen, lokal y = på tvers
+  for (let off = -half; off < half; off += sq) {
+    for (let col = 0; col < 2; col++) {
+      ctx.fillStyle = ((Math.floor(off / sq) + col) % 2 === 0) ? '#fff' : '#111';
+      ctx.fillRect(-sq + col * sq, off, sq, Math.min(sq, half - off));
+    }
+  }
+  ctx.restore();
 }
 
 
@@ -1358,7 +1504,7 @@ function drawRace() {
   drawStartGrid();
   drawScorches();
   drawSkidMarks();
-  drawEasterEgg();   // gress-rekorden — del av kartet (rister med under eksplosjon)
+  if (currentTrack.id === 'rektangel') drawEasterEgg();   // kun på den første banen
   drawScenery();
   drawCar();
   drawExplosion();
