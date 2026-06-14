@@ -6,6 +6,7 @@
 //   1b. Lyd (Web Audio API)
 //   2.  Banen + buffersone
 //   2b. Pynt (grantrær og busker)
+//   2c. Easter egg (rekord som gror i gresset)
 //   3.  Bilen
 //   3b. Runde-teller
 //   3c. Leaderboard (localStorage)
@@ -30,6 +31,10 @@
 // --- 1. OPPSETT ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+
+// Versjonsnummer — vises nede til venstre, så man enkelt kan sjekke at alle
+// spiller samme versjon (nyttig hvis noen har en gammel, bufret kopi).
+const VERSION = 'v1.1';
 
 
 // --- 1b. LYD (Web Audio API) ---
@@ -168,6 +173,76 @@ const scenery = [
   { x: 26, y: 300, s: 14, type: 'bush' },
   { x: 774, y: 300, s: 14, type: 'bush' },
 ];
+
+
+// --- 2c. EASTER EGG: vennens rekord som gror i gresset ---
+// Et lite skjult minne: en hilsen + vennens rekord "gror" frem som gresstrå oppe
+// til venstre, under kontroll-teksten. Teknikken: vi skriver teksten på et usynlig
+// hjelpe-canvas, leser av hvilke piksler som er dekket, og planter et gresstrå på
+// hver av dem.
+const EGG_LINES = ['Entps', '#2.75'];   // linje 1 og 2
+const easterEgg = {
+  blades: [],     // ett objekt per gresstrå: { x, y, h, phase }
+  grow: 0,        // 0 = ikke grodd, 1 = fullvokst
+  built: false,
+};
+
+function buildEasterEgg() {
+  try {
+    // Tegn de to tekstlinjene på et lite usynlig canvas
+    const off = document.createElement('canvas');
+    off.width = 130; off.height = 58;
+    const octx = off.getContext('2d');
+    octx.fillStyle = '#fff';
+    octx.font = 'bold 26px monospace';
+    octx.textAlign = 'left';
+    octx.textBaseline = 'top';
+    octx.fillText(EGG_LINES[0], 2, 2);
+    octx.fillText(EGG_LINES[1], 2, 30);
+    const data = octx.getImageData(0, 0, off.width, off.height).data;
+
+    // Plasser teksten oppe til venstre, rett under kontroll-boksen, i gress-hjørnet
+    const anchorX = 12, anchorY = 40;
+    const scale = 0.62;
+    for (let py = 0; py < off.height; py += 2) {
+      for (let px = 0; px < off.width; px += 2) {
+        const alpha = data[(py * off.width + px) * 4 + 3];
+        if (alpha > 128) {  // her er det "blekk" → plant et gresstrå
+          easterEgg.blades.push({
+            x: anchorX + px * scale,
+            y: anchorY + py * scale,
+            h: 3 + Math.random() * 3,
+            phase: Math.random() * Math.PI * 2,
+          });
+        }
+      }
+    }
+    easterEgg.built = true;
+  } catch (e) {
+    /* hvis pikselavlesning er blokkert: bare hopp over easter egget */
+  }
+}
+
+function updateEasterEgg() {
+  // Gresset gror sakte frem de første ~4 sekundene, og blir så stående
+  if (easterEgg.grow < 1) easterEgg.grow = Math.min(1, easterEgg.grow + 0.004);
+}
+
+function drawEasterEgg() {
+  if (!easterEgg.built || easterEgg.grow <= 0) return;
+  const t = performance.now() / 600;   // brukes til mild vaiing i "vinden"
+  for (const b of easterEgg.blades) {
+    const h = b.h * easterEgg.grow;
+    if (h < 0.5) continue;
+    const sway = Math.sin(t + b.phase) * 0.9 * easterEgg.grow;
+    ctx.strokeStyle = '#54a347';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(b.x, b.y);
+    ctx.lineTo(b.x + sway, b.y - h);
+    ctx.stroke();
+  }
+}
 
 
 // --- 3. BILEN ---
@@ -594,6 +669,7 @@ function update() {
   updateScorches();
   updateEngineSound();
   updateLapCounter();
+  updateEasterEgg();
 }
 
 
@@ -996,6 +1072,7 @@ function draw() {
   drawStartGrid();
   drawScorches();
   drawSkidMarks();
+  drawEasterEgg();   // gress-rekorden — del av kartet (rister med under eksplosjon)
   drawScenery();
   drawCar();
   drawExplosion();
@@ -1013,6 +1090,12 @@ function draw() {
   ctx.fillRect(8, 8, hintW + 16, 26);
   ctx.fillStyle = '#fff';
   ctx.fillText(hint, 16, 26);
+
+  // Versjonsnummer nede til venstre (diskret)
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(VERSION, 10, canvas.height - 10);
 }
 
 
@@ -1048,4 +1131,5 @@ function gameLoop(now) {
   requestAnimationFrame(gameLoop);
 }
 
+buildEasterEgg();   // "plant" gresset som staver vennens rekord før vi starter
 requestAnimationFrame(gameLoop);
