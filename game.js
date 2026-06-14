@@ -1017,10 +1017,35 @@ function draw() {
 
 
 // --- 15. SPILLØKKEN ---
-function gameLoop() {
-  update();
+// VIKTIG: vi skiller mellom "simulering" (update) og "tegning" (draw).
+//
+// Før kjørte vi update() én gang per bilde skjermen tegnet. Problemet: en 144 Hz-
+// skjerm tegner langt flere bilder per sekund enn en 60 Hz-skjerm, så bilen — og
+// alt annet — beveget seg mye fortere hos noen. Urettferdig og inkonsekvent.
+//
+// Løsning: et FAST TIDSSTEG. Vi kjører alltid simuleringen 60 ganger i sekundet,
+// uansett hvor ofte skjermen tegner. Vi måler hvor mye ekte tid som har gått, og
+// kjører update() akkurat så mange faste steg som trengs for å holde tritt.
+const FIXED_DT = 1000 / 60;   // ett steg = 16,67 ms (= 60 steg i sekundet)
+let lastTime = null;
+let accumulator = 0;          // oppsamlet ekte tid som ennå ikke er simulert
+
+function gameLoop(now) {
+  if (lastTime === null) lastTime = now;
+  accumulator += now - lastTime;
+  lastTime = now;
+
+  // Har fanen ligget i bakgrunnen lenge, ikke "ta igjen" alt på én gang
+  if (accumulator > 250) accumulator = 250;
+
+  // Kjør fysikken i faste steg til vi har tatt igjen sanntiden
+  while (accumulator >= FIXED_DT) {
+    update();
+    accumulator -= FIXED_DT;
+  }
+
   draw();
   requestAnimationFrame(gameLoop);
 }
 
-gameLoop();
+requestAnimationFrame(gameLoop);

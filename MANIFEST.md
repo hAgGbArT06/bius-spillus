@@ -43,6 +43,7 @@ Ferdig:
 - [x] Pynt: grantrær og busker i de grønne områdene
 - [x] Leaderboard: dine 5 beste rundetider lagret i nettleseren (localStorage) + «NY REKORD!»-blink
 - [x] Startgrid: nummererte startbokser malt på asfalten bak mål-linja
+- [x] Fast tidssteg i spilløkken — lik fart på alle skjermer (uavhengig av Hz), rundetider blir sammenlignbare
 
 Gjenstår for å «lukke» fase 1:
 - [ ] Fintuning av fysikkmotor og kjøreprofil (akselerasjon, grep, drift, friksjon) — mål forbedringer mot lagret rundetid
@@ -101,3 +102,4 @@ webhotell snart; konkrete tekniske detaljer (server, protokoll) avklares når de
 | 2026-06-14 | Utvidet MANIFEST med veikart i tre faser, avhengigheter og åpne beslutninger |
 | 2026-06-14 | Besluttet online flerspiller for fase 3 (webhotell på vei, detaljer senere) |
 | 2026-06-14 | Leaderboard med 5 beste rundetider (localStorage) + startgrid-markører på asfalten |
+| 2026-06-14 | Fast tidssteg i spilløkken — spillet kjører likt på alle skjermer uansett oppdateringsfrekvens |
