@@ -5,17 +5,21 @@
 //   1.  Oppsett
 //   1b. Lyd (Web Audio API)
 //   2.  Banen + buffersone
+//   2b. Pynt (grantrær og busker)
 //   3.  Bilen
+//   3b. Runde-teller
 //   4.  Bremsemerker (skid marks)
 //   5.  Eksplosjon + brennmerker
 //   6.  Tastaturinput
-//   7.  Sonedeteksjon
+//   7.  Sonedeteksjon + rundekryssing
 //   8.  Oppdater spilltilstand
-//   9.  Tegn banen
+//   9.  Tegn banen + mål-linje
+//   9b. Tegn pynt (trær/busker)
 //  10.  Tegn bremsemerker
 //  11.  Tegn bilen
 //  12.  Tegn brennmerker + eksplosjon
 //  13.  Tegn hastighetsmåler
+//  13b. Tegn runde-info
 //  14.  Tegn alt
 //  15.  Spilløkken
 // =============================================
@@ -130,9 +134,38 @@ function roundRect(x, y, w, h, r) {
   ctx.lineTo(x + r, y + h);
   ctx.arcTo(x,     y + h, x,       y + h - r, r);
   ctx.lineTo(x, y + r);
-  ctx.arcTo(x,     y,     x + r,   y,         r);
+  ctx.arcTo(x,     y,     x + r,   y,          r);
   ctx.closePath();
 }
+
+
+// --- 2b. PYNT (grantrær og busker) ---
+// Faste posisjoner i de grønne områdene (midten + ytterkantene). Vi velger dem
+// for hånd så ingen havner på veien. Bilen kan uansett ikke kjøre på gresset
+// (= død), så trærne trenger ingen kollisjon — de er rein pynt.
+//   type: 'tree' = grantre,  'bush' = busk.   s = størrelse.
+const scenery = [
+  // Gressplenen i midten
+  { x: 235, y: 235, s: 26, type: 'tree' },
+  { x: 330, y: 215, s: 22, type: 'tree' },
+  { x: 470, y: 220, s: 24, type: 'tree' },
+  { x: 565, y: 245, s: 26, type: 'tree' },
+  { x: 595, y: 340, s: 22, type: 'tree' },
+  { x: 520, y: 395, s: 26, type: 'tree' },
+  { x: 400, y: 300, s: 28, type: 'tree' },
+  { x: 300, y: 385, s: 24, type: 'tree' },
+  { x: 215, y: 320, s: 22, type: 'tree' },
+  { x: 380, y: 245, s: 16, type: 'bush' },
+  { x: 460, y: 360, s: 16, type: 'bush' },
+  { x: 270, y: 290, s: 14, type: 'bush' },
+  // Ytre gresskant (hjørner og sider)
+  { x: 26, y: 28,  s: 18, type: 'tree' },
+  { x: 774, y: 28, s: 18, type: 'tree' },
+  { x: 26, y: 575, s: 18, type: 'tree' },
+  { x: 774, y: 575, s: 18, type: 'tree' },
+  { x: 26, y: 300, s: 14, type: 'bush' },
+  { x: 774, y: 300, s: 14, type: 'bush' },
+];
 
 
 // --- 3. BILEN ---
@@ -166,6 +199,29 @@ function resetCar() {
   // Nullstill alle taster slik at ingen "henger" fast etter en død.
   // (Holder du en tast fortsatt inne, registreres den på nytt automatisk.)
   for (const k in keys) keys[k] = false;
+  // En død avbryter runden: start tiden på nytt og glem halvveis-sjekkpunktet.
+  prevCarX = START.x;
+  lap.startTime = performance.now();
+  lap.passedHalfway = false;
+}
+
+
+// --- 3b. RUNDE-TELLER ---
+// Vi teller en runde når bilen krysser mål-linja øverst (ved x = START.x) på vei
+// mot HØYRE — men bare hvis den først har vært innom et halvveis-sjekkpunkt
+// nederst på banen. Det hindrer juks ved å vippe fram og tilbake over linja.
+const lap = {
+  count: 0,              // fullførte runder
+  passedHalfway: false,  // har bilen passert nedre sjekkpunkt denne runden?
+  startTime: performance.now(),
+  lastLapTime: 0,        // forrige rundetid (ms)
+  bestLapTime: 0,        // beste rundetid (ms), 0 = ingen ennå
+};
+let prevCarX = START.x;  // bilens x forrige bilde — brukes til å oppdage kryssing
+
+// Gjør millisekunder om til en lesbar tekst, f.eks. "12.34s".
+function formatTime(ms) {
+  return (ms / 1000).toFixed(2) + 's';
 }
 
 
@@ -363,6 +419,34 @@ function getCarZone() {
   return 'buffer';  // ellers: sandstripa (bremser)
 }
 
+// Sjekker om bilen har krysset mål-linja eller halvveis-sjekkpunktet.
+function updateLapCounter() {
+  const lineX = START.x;
+  // Øvre vegbånd (der mål-linja er) og nedre vegbånd (halvveis)
+  const inTopBand    = car.y > track.outerY && car.y < track.innerY;
+  const inBottomBand = car.y > track.innerY + track.innerH &&
+                       car.y < track.outerY + track.outerH;
+
+  // Nederst: kryss linja (uansett retning) → halvveis-sjekkpunkt passert
+  if (inBottomBand && (prevCarX - lineX) * (car.x - lineX) < 0) {
+    lap.passedHalfway = true;
+  }
+
+  // Øverst: kryss mot HØYRE (venstre→høyre) → fullført runde, hvis halvveis er passert
+  if (inTopBand && prevCarX < lineX && car.x >= lineX && lap.passedHalfway) {
+    lap.count++;
+    const now = performance.now();
+    lap.lastLapTime = now - lap.startTime;
+    if (lap.bestLapTime === 0 || lap.lastLapTime < lap.bestLapTime) {
+      lap.bestLapTime = lap.lastLapTime;
+    }
+    lap.startTime = now;
+    lap.passedHalfway = false;
+  }
+
+  prevCarX = car.x;
+}
+
 
 // --- 8. OPPDATER SPILLTILSTAND ---
 function update() {
@@ -470,6 +554,7 @@ function update() {
   updateSkidMarks();
   updateScorches();
   updateEngineSound();
+  updateLapCounter();
 }
 
 
@@ -518,6 +603,75 @@ function drawTrack() {
   );
   ctx.stroke();
   ctx.setLineDash([]);
+
+  // Rutete start/mål-linje øverst (der bilen starter)
+  const lx = START.x;
+  const y0 = track.outerY + BUFFER;   // øvre kant av asfalten
+  const y1 = track.innerY - BUFFER;   // nedre kant av asfalten på toppstykket
+  const sq = 8;                       // rutestørrelse
+  for (let yy = y0; yy < y1; yy += sq) {
+    for (let col = 0; col < 2; col++) {
+      ctx.fillStyle = ((Math.floor(yy / sq) + col) % 2 === 0) ? '#fff' : '#111';
+      ctx.fillRect(lx - sq + col * sq, yy, sq, Math.min(sq, y1 - yy));
+    }
+  }
+}
+
+
+// --- 9b. TEGN PYNT (grantrær og busker) ---
+function drawSpruce(x, y, s) {
+  // skygge på bakken
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(x, y, s * 0.4, s * 0.14, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // liten brun stamme
+  ctx.fillStyle = '#5b3a1a';
+  ctx.fillRect(x - s * 0.05, y - s * 0.1, s * 0.1, s * 0.16);
+
+  // tre grønne lag (trekanter) — mørkest nederst gir dybde, klassisk gran-form
+  const greens = ['#1f5e2a', '#266a31', '#2e7a39'];
+  for (let i = 0; i < 3; i++) {
+    const baseY = y - s * (0.05 + i * 0.27);
+    const apexY = baseY - s * 0.5;
+    const halfW = s * (0.42 - i * 0.1);
+    ctx.fillStyle = greens[i];
+    ctx.beginPath();
+    ctx.moveTo(x, apexY);
+    ctx.lineTo(x - halfW, baseY);
+    ctx.lineTo(x + halfW, baseY);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawBush(x, y, s) {
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + s * 0.2, s * 0.7, s * 0.25, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // klynge av grønne sirkler
+  ctx.fillStyle = '#2f7a36';
+  const blobs = [[0, 0, 1], [-0.5, 0.1, 0.7], [0.5, 0.1, 0.7], [0, -0.3, 0.7]];
+  for (const [dx, dy, r] of blobs) {
+    ctx.beginPath();
+    ctx.arc(x + dx * s * 0.6, y + dy * s, r * s * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // lysere flekk øverst for litt dybde
+  ctx.fillStyle = '#3f9446';
+  ctx.beginPath();
+  ctx.arc(x - s * 0.15, y - s * 0.15, s * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawScenery() {
+  for (const o of scenery) {
+    if (o.type === 'tree') drawSpruce(o.x, o.y, o.s);
+    else drawBush(o.x, o.y, o.s);
+  }
 }
 
 
@@ -716,6 +870,27 @@ function drawSpeedometer() {
 }
 
 
+// --- 13b. TEGN RUNDE-INFO ---
+// Panel øverst til høyre: rundenummer, tid på inneværende runde og beste runde.
+function drawLapInfo() {
+  const w = 150, x = canvas.width - w - 10, y = 8;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(x, y, w, 64);
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 16px monospace';
+  ctx.fillText('RUNDE ' + lap.count, x + 10, y + 22);
+
+  ctx.font = '12px monospace';
+  const current = performance.now() - lap.startTime;
+  ctx.fillText('Tid:  ' + formatTime(current), x + 10, y + 40);
+
+  ctx.fillStyle = '#ffd24a';
+  ctx.fillText('Best: ' + (lap.bestLapTime ? formatTime(lap.bestLapTime) : '--'), x + 10, y + 56);
+}
+
+
 // --- 14. TEGN ALT ---
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -732,12 +907,14 @@ function draw() {
   drawTrack();
   drawScorches();
   drawSkidMarks();
+  drawScenery();
   drawCar();
   drawExplosion();
 
   ctx.restore();  // slutt skjermrysting — HUD under skal stå stille
 
   drawSpeedometer();
+  drawLapInfo();
 
   // Måler tekstbredden først, så boksen alltid blir bred nok (ingen overflyt).
   const hint = 'WASD / piltaster  •  Shift = boost  •  Mellomrom = drift';

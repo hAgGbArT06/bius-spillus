@@ -32,11 +32,13 @@ Singleplayer. Målet er å lære kodeflyten steg for steg.
 - [x] Sonedeteksjon med avrundede hjørner (signed distance function)
 - [x] Lyd via Web Audio API (myk motorbrum med vibrato + filter, følger farten + eksplosjonssmell)
 - [x] Brutal eksplosjon: ild, røyk, vrakdeler, sjokkbølge, skjermrysting og brennmerke
+- [x] Rundeteller med tidtaker, beste rundetid og rutete start/mål-linje
+- [x] Pynt: grantrær og busker i de grønne områdene
 
 ## Gjenstår / neste steg
-- Runde-teller / tidtaker
 - Motstandere eller hindringer
 - Flere lyder (drift-skrik, boost-sus, kollisjon)
+- Lagre beste rundetid mellom økter (localStorage)
 
 ## Endringslogg
 | Dato | Endring |
@@ -50,3 +52,4 @@ Singleplayer. Målet er å lære kodeflyten steg for steg.
 | 2026-06-14 | Lyd (motor + eksplosjon) og kraftig oppgradert eksplosjonseffekt |
 | 2026-06-14 | Mykere motorlyd: trekant-bølge, lavpassfilter, vibrato og stille tomgang |
 | 2026-06-14 | Fiks: taster lagres som små bokstaver — svingingen henger ikke lenger ved boost+sving |
+| 2026-06-14 | Rundeteller med tidtaker + mål-linje, og grantrær/busker som pynt |
