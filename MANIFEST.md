@@ -13,7 +13,7 @@ Singleplayer. Målet er å lære kodeflyten steg for steg.
 | Fil | Hva den gjør |
 |-----|-------------|
 | `index.html` | Setter opp HTML-siden og canvas-elementet |
-| `game.js` | All spillogikk: bane, bil, bevegelse, input |
+| `game.js` | All spillogikk: bane, bil, bevegelse, input, lyd og effekter |
 | `MANIFEST.md` | Denne filen — oversikt over prosjektet |
 
 ## Ferdige funksjoner
@@ -30,11 +30,13 @@ Singleplayer. Målet er å lære kodeflyten steg for steg.
 - [x] Fartbasert understyring — bilen skrenser mer jo fortere den kjører
 - [x] Bremsemerker på asfalten ved skrensing
 - [x] Sonedeteksjon med avrundede hjørner (signed distance function)
+- [x] Lyd via Web Audio API (myk motorbrum med vibrato + filter, følger farten + eksplosjonssmell)
+- [x] Brutal eksplosjon: ild, røyk, vrakdeler, sjokkbølge, skjermrysting og brennmerke
 
 ## Gjenstår / neste steg
 - Runde-teller / tidtaker
 - Motstandere eller hindringer
-- Lyd (motor, kollisjon)
+- Flere lyder (drift-skrik, boost-sus, kollisjon)
 
 ## Endringslogg
 | Dato | Endring |
@@ -45,3 +47,6 @@ Singleplayer. Målet er å lære kodeflyten steg for steg.
 | 2026-06-14 | Fikset ujevn vegbredde — nå 125px på alle fire sider |
 | 2026-06-14 | WASD-kontroller, Shift-boost, håndbrekk/drift og understyring |
 | 2026-06-14 | Fiks: bred nok tekstboks, nullstiller taster ved død, boost gir reell fart, mer bevegelsesmengde, hjørne-nøyaktig sonedeteksjon |
+| 2026-06-14 | Lyd (motor + eksplosjon) og kraftig oppgradert eksplosjonseffekt |
+| 2026-06-14 | Mykere motorlyd: trekant-bølge, lavpassfilter, vibrato og stille tomgang |
+| 2026-06-14 | Fiks: taster lagres som små bokstaver — svingingen henger ikke lenger ved boost+sving |

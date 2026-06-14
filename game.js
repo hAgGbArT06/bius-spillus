@@ -3,17 +3,18 @@
 // =============================================
 // Seksjoner:
 //   1.  Oppsett
+//   1b. Lyd (Web Audio API)
 //   2.  Banen + buffersone
 //   3.  Bilen
 //   4.  Bremsemerker (skid marks)
-//   5.  Eksplosjon
+//   5.  Eksplosjon + brennmerker
 //   6.  Tastaturinput
 //   7.  Sonedeteksjon
 //   8.  Oppdater spilltilstand
 //   9.  Tegn banen
 //  10.  Tegn bremsemerker
 //  11.  Tegn bilen
-//  12.  Tegn eksplosjon
+//  12.  Tegn brennmerker + eksplosjon
 //  13.  Tegn hastighetsmåler
 //  14.  Tegn alt
 //  15.  Spilløkken
@@ -23,6 +24,91 @@
 // --- 1. OPPSETT ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+
+
+// --- 1b. LYD (Web Audio API) ---
+// Vi lager alle lyder matematisk i nettleseren — ingen lydfiler trengs.
+// Nettlesere krever at lyd startes etter et tastetrykk, så vi "vekker" lyden
+// første gang spilleren trykker på en tast (se tastaturinput lenger nede).
+let audioCtx = null;
+let engineOsc = null;     // motorlyd: en tone som endrer pitch med farten
+let engineGain = null;    // hvor høy motorlyden er
+let engineFilter = null;  // lavpassfilter som demper de skarpe overtonene
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // Motoren er en "trekant"-bølge — mykere og mindre summende enn sagtann.
+  engineOsc  = audioCtx.createOscillator();
+  engineGain = audioCtx.createGain();
+  engineFilter = audioCtx.createBiquadFilter();
+  engineOsc.type = 'triangle';
+  engineOsc.frequency.value = 55;
+  engineFilter.type = 'lowpass';      // slipper bare gjennom de lave, runde tonene
+  engineFilter.frequency.value = 400;
+  engineGain.gain.value = 0;          // starter stille
+  engineOsc.connect(engineFilter).connect(engineGain).connect(audioCtx.destination);
+  engineOsc.start();
+
+  // Vibrato: en treg "LFO" som vugger pitchen ±3 Hz, så lyden føles levende
+  // i stedet for en monoton, repetitiv tone.
+  const lfo = audioCtx.createOscillator();
+  const lfoGain = audioCtx.createGain();
+  lfo.frequency.value = 6;   // vugger ~6 ganger i sekundet
+  lfoGain.gain.value = 3;    // ±3 Hz utslag
+  lfo.connect(lfoGain).connect(engineOsc.frequency);
+  lfo.start();
+}
+
+// Oppdaterer motorlyden hvert bilde:
+//   - høyere fart = lysere tone, åpnere filter og litt høyere volum
+//   - tomgang er nesten helt stille (ingen konstant dur når du står stille)
+function updateEngineSound() {
+  if (!audioCtx) return;
+  const ratio = Math.min(car.speed / car.boostSpeed, 1);
+  const now = audioCtx.currentTime;
+  const targetFreq   = 50 + ratio * 200;
+  const targetCutoff = 350 + ratio * 1300;            // filteret åpner med farten
+  const targetGain   = car.visible ? 0.01 + ratio * 0.09 : 0;
+  engineOsc.frequency.setTargetAtTime(targetFreq, now, 0.08);
+  engineFilter.frequency.setTargetAtTime(targetCutoff, now, 0.08);
+  engineGain.gain.setTargetAtTime(targetGain, now, 0.08);
+}
+
+// Spiller en kraftig eksplosjonslyd: et lavt "boom" + en filtrert støy-smell.
+function playExplosionSound() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+
+  // 1) Lavt boom som synker i tonehøyde
+  const boom = audioCtx.createOscillator();
+  const boomGain = audioCtx.createGain();
+  boom.type = 'sine';
+  boom.frequency.setValueAtTime(140, now);
+  boom.frequency.exponentialRampToValueAtTime(28, now + 0.5);
+  boomGain.gain.setValueAtTime(1.0, now);
+  boomGain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+  boom.connect(boomGain).connect(audioCtx.destination);
+  boom.start(now); boom.stop(now + 0.7);
+
+  // 2) Hvit støy gjennom et lavpassfilter = "smell"/rasling
+  const len = Math.floor(audioCtx.sampleRate * 0.8);
+  const buffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const lp = audioCtx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(1400, now);
+  lp.frequency.exponentialRampToValueAtTime(180, now + 0.7);
+  const noiseGain = audioCtx.createGain();
+  noiseGain.gain.setValueAtTime(0.9, now);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+  noise.connect(lp).connect(noiseGain).connect(audioCtx.destination);
+  noise.start(now); noise.stop(now + 0.8);
+}
 
 
 // --- 2. BANEN ---
@@ -98,30 +184,82 @@ function updateSkidMarks() {
 
 
 // --- 5. EKSPLOSJON ---
+// Mer brutal nå: ild-partikler + røyk + flygende vrakdeler + sjokkbølge,
+// pluss skjermrystelse og et svidd brennmerke som blir igjen på asfalten.
 const explosion = {
   active: false,
   x: 0, y: 0,
-  particles: [],
+  fire: [],      // raske, lyse gnister
+  smoke: [],     // mørke, trege røykskyer som henger igjen
+  debris: [],    // roterende vrakbiter
+  shockwave: 0,  // radius på den ekspanderende trykkbølgen
+  shake: 0,      // hvor mye skjermen rister
   timer: 0,
-  duration: 100,
+  duration: 130,
 };
+
+// Brennmerker som blir liggende på bakken etterpå (blekner sakte).
+const scorches = [];
 
 function triggerExplosion() {
   if (explosion.active) return;
   explosion.active = true;
   explosion.x = car.x; explosion.y = car.y;
-  explosion.timer = 0; explosion.particles = [];
+  explosion.timer = 0;
+  explosion.shockwave = 0;
+  explosion.shake = 22;          // kraftig rist ved smell
+  explosion.fire = [];
+  explosion.smoke = [];
+  explosion.debris = [];
   car.visible = false;
   car.vx = 0; car.vy = 0; car.speed = 0;
 
-  for (let i = 0; i < 40; i++) {
+  playExplosionSound();
+
+  // Svidd merke på bakken
+  scorches.push({ x: car.x, y: car.y, r: 26, life: 1.0 });
+
+  // Ild: mange raske gnister i alle retninger
+  for (let i = 0; i < 80; i++) {
     const a = Math.random() * Math.PI * 2;
-    const s = 0.5 + Math.random() * 6;
-    explosion.particles.push({
+    const s = 1 + Math.random() * 9;
+    explosion.fire.push({
       x: 0, y: 0,
       vx: Math.cos(a) * s, vy: Math.sin(a) * s,
-      size:  2 + Math.random() * 12,
-      color: ['#ff1100','#ff5500','#ff9900','#ffcc00','#ffffff'][Math.floor(Math.random() * 5)],
+      size: 2 + Math.random() * 14,
+      color: ['#ffffff','#ffee66','#ff9900','#ff5500','#ff1100','#cc0000'][Math.floor(Math.random() * 6)],
+      life: 1.0,
+      decay: 0.012 + Math.random() * 0.02,
+    });
+  }
+
+  // Røyk: trege, mørke skyer som vokser og stiger
+  for (let i = 0; i < 22; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = 0.3 + Math.random() * 2;
+    const g = 40 + Math.floor(Math.random() * 50);  // gråtone
+    explosion.smoke.push({
+      x: 0, y: 0,
+      vx: Math.cos(a) * s, vy: Math.sin(a) * s - 0.4,
+      size: 8 + Math.random() * 18,
+      color: `rgb(${g},${g},${g})`,
+      life: 1.0,
+      decay: 0.006 + Math.random() * 0.006,
+    });
+  }
+
+  // Vrakdeler: biter av bilen som spinner og spretter utover
+  for (let i = 0; i < 14; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = 3 + Math.random() * 7;
+    explosion.debris.push({
+      x: 0, y: 0,
+      vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+      w: 3 + Math.random() * 7,
+      h: 2 + Math.random() * 5,
+      color: ['#e63030','#aa2020','#333333','#aad4f5'][Math.floor(Math.random() * 4)],
+      angle: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 0.5,
       life: 1.0,
     });
   }
@@ -130,31 +268,62 @@ function triggerExplosion() {
 function updateExplosion() {
   if (!explosion.active) return;
   explosion.timer++;
-  for (const p of explosion.particles) {
+  explosion.shockwave += 9;             // trykkbølgen vokser raskt
+  explosion.shake *= 0.88;              // risten roer seg gradvis
+
+  for (const p of explosion.fire) {
     p.x += p.vx; p.y += p.vy;
-    p.vy += 0.08;
-    p.life -= 1 / explosion.duration;
-    p.size *= 0.97;
+    p.vx *= 0.94; p.vy = p.vy * 0.94 + 0.12; // luftmotstand + litt tyngde
+    p.life -= p.decay;
+    p.size *= 0.96;
   }
+  for (const p of explosion.smoke) {
+    p.x += p.vx; p.y += p.vy;
+    p.vy -= 0.01;        // røyk stiger
+    p.size += 0.4;       // røyk vokser
+    p.life -= p.decay;
+  }
+  for (const d of explosion.debris) {
+    d.x += d.vx; d.y += d.vy;
+    d.vx *= 0.97; d.vy = d.vy * 0.97 + 0.18;
+    d.angle += d.spin;
+    d.life -= 0.012;
+  }
+
   if (explosion.timer >= explosion.duration) {
     explosion.active = false;
     resetCar();
   }
 }
 
+function updateScorches() {
+  for (const s of scorches) s.life -= 0.0015;
+  // Fjern merker som er helt falmet (holder lista kort)
+  for (let i = scorches.length - 1; i >= 0; i--) {
+    if (scorches[i].life <= 0) scorches.splice(i, 1);
+  }
+}
+
 
 // --- 6. TASTATURINPUT ---
+// Vi lagrer alltid tastenavnet i SMÅ bokstaver. Det er viktig: når Shift holdes
+// inne sender nettleseren f.eks. "D" i stedet for "d". Slipper du Shift før
+// bokstaven, kommer slipp-signalet som "d" — og "D" blir aldri nullstilt og
+// henger fast. Ved å gjøre alt til små bokstaver peker samme fysiske tast alltid
+// til samme navn, uansett om Shift er nede.
 const keys = {};
 
 document.addEventListener('keydown', (e) => {
-  keys[e.key] = true;
+  const k = e.key.toLowerCase();
+  keys[k] = true;
+  initAudio();  // starter lyden ved første tastetrykk (nettleserkrav)
   // Hindrer scrolling med piltaster og mellomrom
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) {
+  if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) {
     e.preventDefault();
   }
 });
 
-document.addEventListener('keyup', (e) => { keys[e.key] = false; });
+document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
 
 // --- 7. SONEDETEKSJON ---
@@ -197,15 +366,20 @@ function getCarZone() {
 
 // --- 8. OPPDATER SPILLTILSTAND ---
 function update() {
-  if (explosion.active) { updateExplosion(); return; }
+  if (explosion.active) {
+    updateExplosion();
+    updateScorches();
+    updateEngineSound();
+    return;
+  }
 
-  // Les input
-  const boost     = keys['Shift'];
+  // Les input (alle navn er små bokstaver, se seksjon 6)
+  const boost     = keys['shift'];
   const handbrake = keys[' '];
-  const gas       = keys['ArrowUp']    || keys['w'] || keys['W'];
-  const brake     = keys['ArrowDown']  || keys['s'] || keys['S'];
-  const left      = keys['ArrowLeft']  || keys['a'] || keys['A'];
-  const right     = keys['ArrowRight'] || keys['d'] || keys['D'];
+  const gas       = keys['arrowup']    || keys['w'];
+  const brake     = keys['arrowdown']  || keys['s'];
+  const left      = keys['arrowleft']  || keys['a'];
+  const right     = keys['arrowright'] || keys['d'];
 
   const topSpeed = boost ? car.boostSpeed : car.maxSpeed;
   // Boost gir både høyere tak OG mer motorkraft, ellers når bilen aldri det nye taket.
@@ -294,6 +468,8 @@ function update() {
   }
 
   updateSkidMarks();
+  updateScorches();
+  updateEngineSound();
 }
 
 
@@ -384,49 +560,110 @@ function drawCar() {
 }
 
 
-// --- 12. TEGN EKSPLOSJON ---
+// --- 12a. TEGN BRENNMERKER ---
+// Svidde flekker som blir igjen på asfalten etter en eksplosjon.
+function drawScorches() {
+  for (const s of scorches) {
+    if (s.life <= 0) continue;
+    ctx.globalAlpha = s.life * 0.6;
+    const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r);
+    grad.addColorStop(0, '#000000');
+    grad.addColorStop(0.6, '#1a1a1a');
+    grad.addColorStop(1, 'rgba(20,20,20,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// --- 12b. TEGN EKSPLOSJON ---
 function drawExplosion() {
   if (!explosion.active) return;
+  const ex = explosion.x, ey = explosion.y;
 
-  if (explosion.timer < 8) {
-    const alpha = ((8 - explosion.timer) / 8) * 0.75;
-    ctx.fillStyle = `rgba(255, 220, 50, ${alpha})`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Kraftig hvit-gul flash de første bildene (litt større enn skjermen
+  // så skjermrystingen ikke etterlater en udekket stripe i kanten)
+  if (explosion.timer < 6) {
+    const alpha = ((6 - explosion.timer) / 6) * 0.85;
+    ctx.fillStyle = `rgba(255, 240, 180, ${alpha})`;
+    ctx.fillRect(-40, -40, canvas.width + 80, canvas.height + 80);
   }
 
-  if (explosion.timer < 45) {
-    const alpha = 1 - explosion.timer / 45;
-    const scale = 1 + explosion.timer / 18;
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.translate(explosion.x, explosion.y - 30);
-    ctx.scale(scale, scale);
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 36px monospace';
-    ctx.fillStyle   = '#ff4400';
-    ctx.fillText('BOOM!', 0, 0);
-    ctx.strokeStyle = '#ffcc00';
-    ctx.lineWidth   = 1.5;
-    ctx.strokeText('BOOM!', 0, 0);
-    ctx.restore();
+  // Sjokkbølge: en ekspanderende ring som blekner
+  if (explosion.timer < 30) {
+    const alpha = 1 - explosion.timer / 30;
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.strokeStyle = '#ffdd88';
+    ctx.lineWidth = 6 * alpha + 1;
+    ctx.beginPath();
+    ctx.arc(ex, ey, explosion.shockwave, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
-  for (const p of explosion.particles) {
+  // Røyk bak ilden (tegnes først så ilden ligger oppå)
+  for (const p of explosion.smoke) {
+    if (p.life <= 0) continue;
+    ctx.globalAlpha = Math.max(0, p.life) * 0.55;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(ex + p.x, ey + p.y, Math.max(0.1, p.size), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Ild-gnister med "glød" (lighter-blanding gjør at de lyser når de overlapper)
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of explosion.fire) {
     if (p.life <= 0) continue;
     ctx.globalAlpha = Math.max(0, p.life);
     ctx.fillStyle = p.color;
     ctx.beginPath();
-    ctx.arc(explosion.x + p.x, explosion.y + p.y, Math.max(0.1, p.size), 0, Math.PI * 2);
+    ctx.arc(ex + p.x, ey + p.y, Math.max(0.1, p.size), 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.globalCompositeOperation = 'source-over';
+
+  // Vrakdeler som spinner
+  for (const d of explosion.debris) {
+    if (d.life <= 0) continue;
+    ctx.globalAlpha = Math.max(0, d.life);
+    ctx.save();
+    ctx.translate(ex + d.x, ey + d.y);
+    ctx.rotate(d.angle);
+    ctx.fillStyle = d.color;
+    ctx.fillRect(-d.w / 2, -d.h / 2, d.w, d.h);
+    ctx.restore();
+  }
   ctx.globalAlpha = 1;
+
+  // "BOOM!" som vokser og blekner
+  if (explosion.timer < 40) {
+    const alpha = 1 - explosion.timer / 40;
+    const scale = 1 + explosion.timer / 14;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(ex, ey - 30);
+    ctx.scale(scale, scale);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 40px monospace';
+    ctx.fillStyle   = '#ff2200';
+    ctx.fillText('BOOM!', 0, 0);
+    ctx.strokeStyle = '#ffcc00';
+    ctx.lineWidth   = 2;
+    ctx.strokeText('BOOM!', 0, 0);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
 }
 
 
 // --- 13. TEGN HASTIGHETSMÅLER ---
 // Når boost er aktiv: oransje ring og "BOOST"-tekst i stedet for "km/h".
 function drawSpeedometer() {
-  const boost = keys['Shift'];
+  const boost = keys['shift'];
   const cx = canvas.width - 75;
   const cy = canvas.height - 75;
   const r  = 50;
@@ -482,10 +719,24 @@ function drawSpeedometer() {
 // --- 14. TEGN ALT ---
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Skjermrysting under eksplosjon: flytt hele bildet litt tilfeldig.
+  // save/restore sørger for at forskyvningen nullstilles til neste bilde.
+  ctx.save();
+  if (explosion.active && explosion.shake > 0.5) {
+    const dx = (Math.random() - 0.5) * 2 * explosion.shake;
+    const dy = (Math.random() - 0.5) * 2 * explosion.shake;
+    ctx.translate(dx, dy);
+  }
+
   drawTrack();
+  drawScorches();
   drawSkidMarks();
   drawCar();
   drawExplosion();
+
+  ctx.restore();  // slutt skjermrysting — HUD under skal stå stille
+
   drawSpeedometer();
 
   // Måler tekstbredden først, så boksen alltid blir bred nok (ingen overflyt).
