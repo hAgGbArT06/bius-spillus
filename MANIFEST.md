@@ -24,6 +24,11 @@ Singleplayer. Målet er å lære kodeflyten steg for steg.
 - [x] Eksplosjon med partikler, flash og BOOM!-tekst når du kjører av banen
 - [x] Automatisk reset til startposisjon etter eksplosjon
 - [x] Hastighetsmåler (buemåler, grønn→rød) nede til høyre
+- [x] WASD-kontroller (i tillegg til piltaster)
+- [x] Shift = boost (høyere topfart, oransje HUD)
+- [x] Mellomrom = håndbrekk / drift (minimalt grep, skarpere sving)
+- [x] Fartbasert understyring — bilen skrenser mer jo fortere den kjører
+- [x] Bremsemerker på asfalten ved skrensing
 
 ## Gjenstår / neste steg
 - Runde-teller / tidtaker
@@ -37,3 +42,4 @@ Singleplayer. Målet er å lære kodeflyten steg for steg.
 | 2026-06-14 | Fikset banefargene (vei grå, gressplen grønn) |
 | 2026-06-14 | Lagt til buffersone, eksplosjon og hastighetsmåler |
 | 2026-06-14 | Fikset ujevn vegbredde — nå 125px på alle fire sider |
+| 2026-06-14 | WASD-kontroller, Shift-boost, håndbrekk/drift og understyring |
