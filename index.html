@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bilus-spillus</title>
+  <style>
+    /* Mørk bakgrunn rundt canvaset */
+    body {
+      background: #111;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    /* Canvaset er spillskjermen vår */
+    canvas {
+      border: 2px solid #444;
+    }
+  </style>
+</head>
+<body>
+  <!-- Canvas er "lerrettet" vi tegner spillet på. 800x600 piksler. -->
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+  <!-- Laster inn all spillogikk fra game.js -->
+  <script src="game.js"></script>
+</body>
+</html>
