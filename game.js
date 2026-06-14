@@ -36,7 +36,7 @@ const ctx = canvas.getContext('2d');
 
 // Versjonsnummer — vises nede til venstre, så man enkelt kan sjekke at alle
 // spiller samme versjon (nyttig hvis noen har en gammel, bufret kopi).
-const VERSION = 'v1.4';
+const VERSION = 'v1.6';
 
 
 // --- 1b. LYD (Web Audio API) ---
@@ -283,7 +283,7 @@ const car = {
   friction:          0.97,    // mens du gasser (lar toppfarten sette seg)
   coastFriction:     0.995,   // ingen knapper → bilen ruller fritt, mister nesten ingen fart
   brakeFriction:     0.94,    // når du bremser (pil ned / S)
-  handbrakeFriction: 0.87,    // håndbrekk (mellomrom)
+  handbrakeFriction: 0.985,   // drift: beholder nesten all fart → lange, fine drifter
 };
 
 function resetCar() {
@@ -365,11 +365,29 @@ function clearLeaderboard() {
 
 // --- 4. BREMSEMERKER ---
 // Når bilen slurer lagres punkter her. Hvert punkt blekner gradvis.
+// Vi legger ett merke ved HVERT hjul, så det blir parallelle dekkspor.
 const skidMarks = [];
 
-function addSkidMark() {
-  skidMarks.push({ x: car.x, y: car.y, life: 1.0 });
-  if (skidMarks.length > 300) skidMarks.shift(); // maks 300 punkter
+// Hjulposisjoner i bilens lokale koordinater (x = fram/bak, y = venstre/høyre).
+// Samme plassering som hjulene tegnes på i drawCar().
+const REAR_WHEELS  = [[-7, -7], [-7, 7]];   // bak venstre/høyre
+const FRONT_WHEELS = [[7, -7], [7, 7]];     // fram venstre/høyre
+
+// Normalt setter bare bakhjulene spor (2 linjer). Ved kraftig drift (allFour=true)
+// låser også framhjulene → spor etter alle fire hjul.
+function addSkidMark(allFour) {
+  const cos = Math.cos(car.angle), sin = Math.sin(car.angle);
+  const wheels = allFour ? REAR_WHEELS.concat(FRONT_WHEELS) : REAR_WHEELS;
+  // Roter hvert hjulpunkt fra bilens ramme til verdens-koordinater
+  for (const [ox, oy] of wheels) {
+    skidMarks.push({
+      x: car.x + ox * cos - oy * sin,
+      y: car.y + ox * sin + oy * cos,
+      life: 1.0,
+    });
+  }
+  // Hold lista håndterbar
+  if (skidMarks.length > 1200) skidMarks.splice(0, skidMarks.length - 1200);
 }
 
 function updateSkidMarks() {
@@ -669,8 +687,8 @@ function update() {
     const forwardDot = Math.cos(car.angle) * car.vx + Math.sin(car.angle) * car.vy;
     const dir = forwardDot >= 0 ? 1 : -1;
 
-    // Håndbrekk gir skarpere sving (hjulene låser bak, gir dreining)
-    const turn = car.turnSpeed * (handbrake ? 1.6 : 1);
+    // Håndbrekk gir mye skarpere sving (lett å kaste bilen inn i en drift)
+    const turn = car.turnSpeed * (handbrake ? 2.0 : 1);
     if (left)  car.angle -= turn * dir;
     if (right) car.angle += turn * dir;
   }
@@ -683,7 +701,7 @@ function update() {
   if (speed > 0.1) {
     let grip;
     if (handbrake) {
-      grip = 0.04;
+      grip = 0.022;   // svært lavt grep → bilen slurer lenge = lang drift
     } else {
       // Lineær reduksjon: 0.18 ved stillestående → 0.07 ved full fart
       grip = Math.max(0.07, 0.18 - (speed / topSpeed) * 0.11);
@@ -730,7 +748,9 @@ function update() {
     const velAngle = Math.atan2(car.vy, car.vx);
     let diff = Math.abs(velAngle - car.angle) % (Math.PI * 2);
     if (diff > Math.PI) diff = Math.PI * 2 - diff;
-    if (handbrake || diff > 0.15) addSkidMark();
+    if (handbrake || diff > 0.15) {
+      addSkidMark(diff > 0.5);   // stor driftvinkel → spor fra alle fire hjul
+    }
   }
 
   updateSkidMarks();
@@ -885,7 +905,7 @@ function drawSkidMarks() {
     ctx.globalAlpha = s.life * 0.55;
     ctx.fillStyle = '#222';
     ctx.beginPath();
-    ctx.arc(s.x, s.y, 2.5, 0, Math.PI * 2);
+    ctx.arc(s.x, s.y, 2, 0, Math.PI * 2);   // litt mindre → tydelige parallelle spor
     ctx.fill();
   }
   ctx.globalAlpha = 1;

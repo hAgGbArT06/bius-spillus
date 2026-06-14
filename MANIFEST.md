@@ -52,6 +52,8 @@ Ferdig:
 - [x] Bredere spillvindu (1000×600) med et «billboard» i mørk eik til høyre — tider, nullstill-knapp og hastighetsmåler flyttet dit (ikke lenger oppå banen)
 - [x] «Forrige runde»-tid i HUD-en (oppdateres hver runde, også uten rekord)
 - [x] Ekte racing-start: bilen spawner på pole (plass 1) bak startlinja, og klokka starter først når du krysser linja
+- [x] Dekkspor: 2 spor (bakhjul) normalt, alle 4 hjul ved kraftig driftvinkel
+- [x] Mellomrom = ekte drift-knapp (beholder fart, lavt grep, skarp sving = lange drifter)
 
 Gjenstår for å «lukke» fase 1:
 - [~] Fintuning av fysikkmotor og kjøreprofil (akselerasjon, grep, drift, friksjon) — PÅGÅR. Nylig: «fri»/coasting når ingen knapper trykkes (må bremse aktivt)
@@ -116,3 +118,5 @@ webhotell snart; konkrete tekniske detaljer (server, protokoll) avklares når de
 | 2026-06-14 | Bredere canvas (1000×600) + billboard i mørk eik for HUD, så banen ikke blokkeres (v1.2) |
 | 2026-06-14 | Coasting/«fri» når ingen knapper trykkes + «forrige runde»-tid i HUD (v1.3) |
 | 2026-06-14 | Startgrid flyttet til venstre, bil spawner på pole, klokka starter ved startlinja (v1.4) |
+| 2026-06-14 | Dekkspor per hjul — fire parallelle spor i stedet for én senterlinje (v1.5) |
+| 2026-06-14 | Drift-knapp (mellomrom) beholder fart + lavt grep for lange drifter, 2 spor normalt / 4 ved stor vinkel (v1.6) |
