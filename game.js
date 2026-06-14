@@ -21,6 +21,7 @@
 //  10.  Tegn bremsemerker
 //  11.  Tegn bilen
 //  12.  Tegn brennmerker + eksplosjon
+//  12c. Billboard (mørk eik) bak HUD
 //  13.  Tegn hastighetsmåler
 //  13b. Tegn runde-info + leaderboard
 //  13c. Tegn nullstill-knapp
@@ -35,7 +36,7 @@ const ctx = canvas.getContext('2d');
 
 // Versjonsnummer — vises nede til venstre, så man enkelt kan sjekke at alle
 // spiller samme versjon (nyttig hvis noen har en gammel, bufret kopi).
-const VERSION = 'v1.1';
+const VERSION = 'v1.2';
 
 
 // --- 1b. LYD (Web Audio API) ---
@@ -992,12 +993,64 @@ function drawExplosion() {
 }
 
 
+// --- 12c. BILLBOARD (mørk eik) ---
+// Et trepanel til høyre for banen. Her henger leaderboardet, nullstill-knappen
+// og hastighetsmåleren — helt unna selve banen.
+const HUD = { x: 800, y: 12, w: 186, h: 576 };
+
+function drawBillboard() {
+  const b = HUD;
+
+  // Skygge bak panelet
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(b.x + 5, b.y + 7, b.w, b.h);
+
+  // Vertikale planker i mørk eik (vekslende nyanser gir treverk-følelse)
+  const planks = 4;
+  const pw = b.w / planks;
+  for (let i = 0; i < planks; i++) {
+    ctx.fillStyle = i % 2 === 0 ? '#43311d' : '#392917';
+    ctx.fillRect(b.x + i * pw, b.y, pw, b.h);
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';   // skjøt mellom planker
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(b.x + i * pw, b.y);
+    ctx.lineTo(b.x + i * pw, b.y + b.h);
+    ctx.stroke();
+  }
+
+  // Ytre ramme + en svak lyskant øverst
+  ctx.strokeStyle = '#241a0e';
+  ctx.lineWidth = 5;
+  ctx.strokeRect(b.x, b.y, b.w, b.h);
+  ctx.strokeStyle = 'rgba(255,220,160,0.12)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(b.x + 4, b.y + 4, b.w - 8, b.h - 8);
+
+  // Fire "skruer" i hjørnene for litt sjarm
+  ctx.fillStyle = '#1c140a';
+  for (const [sx, sy] of [[10, 10], [b.w - 10, 10], [10, b.h - 10], [b.w - 10, b.h - 10]]) {
+    ctx.beginPath();
+    ctx.arc(b.x + sx, b.y + sy, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Inngravert tittel midt på panelet (fyller den tomme treflaten)
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,225,180,0.5)';
+  ctx.font = 'bold 17px monospace';
+  ctx.fillText('BILUS', b.x + b.w / 2, b.y + b.h * 0.46);
+  ctx.fillText('SPILLUS', b.x + b.w / 2, b.y + b.h * 0.46 + 20);
+  ctx.textAlign = 'left';
+}
+
+
 // --- 13. TEGN HASTIGHETSMÅLER ---
 // Når boost er aktiv: oransje ring og "BOOST"-tekst i stedet for "km/h".
 function drawSpeedometer() {
   const boost = keys['shift'];
-  const cx = canvas.width - 75;
-  const cy = canvas.height - 75;
+  const cx = HUD.x + HUD.w / 2;            // midtstilt på billboardet
+  const cy = HUD.y + HUD.h - 66;           // nederst på billboardet
   const r  = 50;
   const topSpeed = boost ? car.boostSpeed : car.maxSpeed;
 
@@ -1053,8 +1106,9 @@ function drawSpeedometer() {
 // liste over dine beste tider (lagret i nettleseren).
 
 // Hvor stort leaderboard-panelet er (deles av tegning og museklikk-sjekk).
+// Det sitter øverst på billboardet (HUD).
 function lapPanelRect() {
-  const w = 168, x = canvas.width - w - 10, y = 8;
+  const x = HUD.x + 12, y = HUD.y + 14, w = HUD.w - 24;
   const rows = Math.min(leaderboard.length, 5);
   const h = 66 + (rows > 0 ? rows * 16 + 6 : 14);
   return { x, y, w, h, rows };
@@ -1147,6 +1201,7 @@ function draw() {
 
   ctx.restore();  // slutt skjermrysting — HUD under skal stå stille
 
+  drawBillboard();    // tre-panelet bak HUD-elementene
   drawSpeedometer();
   drawLapInfo();
   drawResetButton();

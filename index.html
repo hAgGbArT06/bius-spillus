@@ -21,8 +21,10 @@
   </style>
 </head>
 <body>
-  <!-- Canvas er "lerrettet" vi tegner spillet på. 800x600 piksler. -->
-  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <!-- Canvas er "lerrettet" vi tegner spillet på. 1000x600 piksler.
+       Banen ligger til venstre (x 50–750), og den ekstra plassen til høyre
+       brukes til et "billboard" med tider og hastighetsmåler. -->
+  <canvas id="gameCanvas" width="1000" height="600"></canvas>
 
   <!-- Laster inn all spillogikk fra game.js -->
   <script src="game.js"></script>

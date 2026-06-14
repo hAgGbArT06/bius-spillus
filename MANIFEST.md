@@ -47,6 +47,7 @@ Ferdig:
 - [x] Versjonsnummer nede til venstre (så alle kan sjekke samme versjon)
 - [x] Easter egg: hilsen + vennens rekord ("Entps / #2.75") gror frem som gress oppe til venstre
 - [x] Klikkbar nullstill-knapp for leaderboardet (med to-klikks bekreftelse)
+- [x] Bredere spillvindu (1000×600) med et «billboard» i mørk eik til høyre — tider, nullstill-knapp og hastighetsmåler flyttet dit (ikke lenger oppå banen)
 
 Gjenstår for å «lukke» fase 1:
 - [ ] Fintuning av fysikkmotor og kjøreprofil (akselerasjon, grep, drift, friksjon) — mål forbedringer mot lagret rundetid
@@ -108,3 +109,4 @@ webhotell snart; konkrete tekniske detaljer (server, protokoll) avklares når de
 | 2026-06-14 | Fast tidssteg i spilløkken — spillet kjører likt på alle skjermer uansett oppdateringsfrekvens |
 | 2026-06-14 | Versjonsnummer (v1.1) i hjørnet + easter egg: vennens rekord 2.75 gror frem som gress |
 | 2026-06-14 | Klikkbar nullstill-knapp for leaderboardet (to-klikks bekreftelse) |
+| 2026-06-14 | Bredere canvas (1000×600) + billboard i mørk eik for HUD, så banen ikke blokkeres (v1.2) |
