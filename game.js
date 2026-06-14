@@ -36,21 +36,77 @@ const ctx = canvas.getContext('2d');
 
 // Versjonsnummer — vises nede til venstre, så man enkelt kan sjekke at alle
 // spiller samme versjon (nyttig hvis noen har en gammel, bufret kopi).
-const VERSION = 'v2.1';
+const VERSION = 'v2.4';
 
 
 // --- 1c. SPILLTILSTAND, BANER OG INNSTILLINGER ---
 // Spillet kan være i ulike "skjermer" (tilstander). update()/draw() retter seg
 // etter denne.  'menu' = startmeny, 'tracks' = velg bane, 'settings' = innstillinger,
-// 'race' = selve kjøringen.
+// 'race' = selve kjøringen, 'paused' = pausemeny over et løp.
 let gameState = 'menu';
+let settingsReturn = 'menu';   // hvilken skjerm innstillinger skal gå tilbake til
+let pauseStart = 0;            // når pausen startet (for å fryse rundeklokka)
 
-// Baner. Hver bane har sin egen lagrings-nøkkel for leaderboardet. Rektangelen
-// bruker 'bilus_leaderboard' — den samme som før — så gamle tider beholdes!
+// Baner — DATA-DREVET. All geometri for en bane bor her, så en ny bane er bare
+// en ny oppføring i lista. Hver bane har:
+//   lbKey   – egen lagrings-nøkkel for leaderboardet (Rektangelen bruker den
+//             gamle nøkkelen, så tidene dine beholdes!)
+//   buffer  – bredden på sandstripa langs vegkanten
+//   lineX   – x-posisjon for start/mål-linja
+//   geo     – selve baneformen (ytre + indre avrundet rektangel)
+//   grid    – startoppstillingen (baner, antall ruter, avstand)
+//   start   – bilens spawn (pole, plass 1)
+//   scenery – trær og busker (type 'tree'/'bush', s = størrelse)
 const TRACKS = [
-  { id: 'rektangel', name: 'Rektangelen', lbKey: 'bilus_leaderboard' },
+  {
+    id: 'rektangel',
+    name: 'Rektangelen',
+    lbKey: 'bilus_leaderboard',
+    buffer: 22,
+    lineX: 400,
+    geo: { outerX: 50,  outerY: 50,  outerW: 700, outerH: 500, cornerR: 60,
+           innerX: 175, innerY: 175, innerW: 450, innerH: 250 },
+    grid:  { laneA: 92, laneB: 128, firstX: 344, stepX: 24, count: 6 },
+    start: { x: 344, y: 92, angle: 0 },
+    scenery: [
+      // Gressplenen i midten
+      { x: 235, y: 235, s: 26, type: 'tree' },
+      { x: 330, y: 215, s: 22, type: 'tree' },
+      { x: 470, y: 220, s: 24, type: 'tree' },
+      { x: 565, y: 245, s: 26, type: 'tree' },
+      { x: 595, y: 340, s: 22, type: 'tree' },
+      { x: 520, y: 395, s: 26, type: 'tree' },
+      { x: 400, y: 300, s: 28, type: 'tree' },
+      { x: 300, y: 385, s: 24, type: 'tree' },
+      { x: 215, y: 320, s: 22, type: 'tree' },
+      { x: 380, y: 245, s: 16, type: 'bush' },
+      { x: 460, y: 360, s: 16, type: 'bush' },
+      { x: 270, y: 290, s: 14, type: 'bush' },
+      // Ytre gresskant (hjørner og sider)
+      { x: 26, y: 28,  s: 18, type: 'tree' },
+      { x: 774, y: 28, s: 18, type: 'tree' },
+      { x: 26, y: 575, s: 18, type: 'tree' },
+      { x: 774, y: 575, s: 18, type: 'tree' },
+      { x: 26, y: 300, s: 14, type: 'bush' },
+      { x: 774, y: 300, s: 14, type: 'bush' },
+    ],
+  },
 ];
-let currentTrack = TRACKS[0];
+
+// "Aktiv bane"-pekere. Resten av koden leser fra disse, og applyTrackGeometry()
+// peker dem om når en bane velges. Slik slipper vi å skrive currentTrack.geo... overalt.
+let currentTrack, track, BUFFER, LINE_X, GRID, START, scenery;
+
+function applyTrackGeometry(t) {
+  currentTrack = t;
+  track   = t.geo;
+  BUFFER  = t.buffer;
+  LINE_X  = t.lineX;
+  GRID    = t.grid;
+  START   = t.start;
+  scenery = t.scenery;
+}
+applyTrackGeometry(TRACKS[0]);   // standardbane ved oppstart
 
 // Fargevalg for bilen (innstillinger)
 const CAR_COLORS = ['#e63030', '#3070e6', '#30b050', '#e6c020', '#b030c0', '#e08020', '#dddddd', '#1a1a1a'];
@@ -145,6 +201,12 @@ function updateEngineSound() {
   engineGain.gain.setTargetAtTime(targetGain, now, 0.08);
 }
 
+// Demper motorlyden — kalles når vi ikke kjører (meny, pause osv.).
+function silenceSounds() {
+  if (!audioCtx) return;
+  engineGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+}
+
 // Spiller en kraftig eksplosjonslyd: et lavt "boom" + en filtrert støy-smell.
 function playExplosionSound() {
   if (!audioCtx) return;
@@ -188,12 +250,7 @@ function setVolume(v) {
 
 
 // --- 2. BANEN ---
-const BUFFER = 22;
-
-const track = {
-  outerX: 50,  outerY: 50,  outerW: 700, outerH: 500, cornerR: 60,
-  innerX: 175, innerY: 175, innerW: 450, innerH: 250,
-};
+// (Selve bane-geometrien bor nå i TRACKS / de aktive pekerne, se seksjon 1c.)
 
 function roundRect(x, y, w, h, r) {
   r = Math.max(0, r);
@@ -212,32 +269,8 @@ function roundRect(x, y, w, h, r) {
 
 
 // --- 2b. PYNT (grantrær og busker) ---
-// Faste posisjoner i de grønne områdene (midten + ytterkantene). Vi velger dem
-// for hånd så ingen havner på veien. Bilen kan uansett ikke kjøre på gresset
-// (= død), så trærne trenger ingen kollisjon — de er rein pynt.
-//   type: 'tree' = grantre,  'bush' = busk.   s = størrelse.
-const scenery = [
-  // Gressplenen i midten
-  { x: 235, y: 235, s: 26, type: 'tree' },
-  { x: 330, y: 215, s: 22, type: 'tree' },
-  { x: 470, y: 220, s: 24, type: 'tree' },
-  { x: 565, y: 245, s: 26, type: 'tree' },
-  { x: 595, y: 340, s: 22, type: 'tree' },
-  { x: 520, y: 395, s: 26, type: 'tree' },
-  { x: 400, y: 300, s: 28, type: 'tree' },
-  { x: 300, y: 385, s: 24, type: 'tree' },
-  { x: 215, y: 320, s: 22, type: 'tree' },
-  { x: 380, y: 245, s: 16, type: 'bush' },
-  { x: 460, y: 360, s: 16, type: 'bush' },
-  { x: 270, y: 290, s: 14, type: 'bush' },
-  // Ytre gresskant (hjørner og sider)
-  { x: 26, y: 28,  s: 18, type: 'tree' },
-  { x: 774, y: 28, s: 18, type: 'tree' },
-  { x: 26, y: 575, s: 18, type: 'tree' },
-  { x: 774, y: 575, s: 18, type: 'tree' },
-  { x: 26, y: 300, s: 14, type: 'bush' },
-  { x: 774, y: 300, s: 14, type: 'bush' },
-];
+// Posisjonene for trær/busker bor nå i hver bane (currentTrack.scenery, se 1c),
+// så hver bane kan ha sin egen pynt. drawScenery() (seksjon 9b) tegner dem.
 
 
 // --- 2c. EASTER EGG: vennens rekord som gror i gresset ---
@@ -317,16 +350,8 @@ function drawEasterEgg() {
 // Fordelen: vi kan simulere sluring/drift. Bilen peker i én retning (angle),
 // men beveger seg i en annen (vx/vy). Graden av "grip" bestemmer hvor fort
 // fartvektoren retter seg etter bilens vinkel.
-// Start/mål-linja ligger midt på toppstykket (her skjer rundetellingen).
-// Den er bevisst skilt fra bilens spawn, så bilen kan stå BAK linja på pole.
-const LINE_X = 400;
-
-// Startoppstilling: nummererte ruter trappet bakover (mot venstre) fra linja.
-// Plass 1 er fremst (nærmest linja). firstX flyttet til venstre for mer plass.
-const GRID = { laneA: 92, laneB: 128, firstX: 344, stepX: 24, count: 6 };
-
-// Bilen starter oppå plass 1 (pole position), bak startlinja.
-const START = { x: GRID.firstX, y: GRID.laneA, angle: 0 };
+// LINE_X (start/mål-linje), GRID (startoppstilling) og START (bilens pole-spawn)
+// er nå del av bane-dataene og settes av applyTrackGeometry (seksjon 1c).
 
 const car = {
   x: START.x, y: START.y, angle: START.angle,
@@ -591,8 +616,13 @@ document.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   keys[k] = true;
   initAudio();  // starter lyden ved første tastetrykk (nettleserkrav)
-  // Escape → tilbake til startmenyen
-  if (k === 'escape') gameState = 'menu';
+  // Escape: i løp → pause, i pause → fortsett, i undermeny → tilbake
+  if (k === 'escape') {
+    if (gameState === 'race') pauseGame();
+    else if (gameState === 'paused') resumeGame();
+    else if (gameState === 'settings') gameState = settingsReturn;
+    else if (gameState === 'tracks') gameState = 'menu';
+  }
   // Hindrer scrolling med piltaster og mellomrom
   if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) {
     e.preventDefault();
@@ -617,13 +647,14 @@ canvas.addEventListener('click', (e) => {
   } else if (gameState === 'settings') {
     handleSettingsClick(m.x, m.y);
   } else {
-    // meny og banevalg: bare vanlige knapper
+    // meny, banevalg og pause: bare vanlige knapper
     for (const b of uiButtons) if (hitRect(b, m.x, m.y)) { b.onClick(); return; }
   }
 });
 
-// Klikk under løpet: nullstill-knappen (med to-klikks bekreftelse).
+// Klikk under løpet: pause-ikon eller nullstill-knappen (med to-klikks bekreftelse).
 function handleRaceClick(mx, my) {
+  if (hitRect(pauseButtonRect(), mx, my)) { pauseGame(); return; }
   if (hitRect(resetButtonRect(), mx, my)) {
     if (resetConfirm > 0) { clearLeaderboard(); resetConfirm = 0; }
     else resetConfirm = 180;
@@ -1260,8 +1291,9 @@ function drawLapInfo() {
   ctx.fillText('RUNDE ' + lap.count, x + 10, y + 22);
 
   ctx.font = '12px monospace';
-  // Klokka teller først når du har krysset startlinja
-  const current = lap.started ? (performance.now() - lap.startTime) : 0;
+  // Klokka teller først når du har krysset startlinja, og fryser under pause.
+  const refNow = (gameState === 'paused') ? pauseStart : performance.now();
+  const current = lap.started ? (refNow - lap.startTime) : 0;
   ctx.fillText('Tid:  ' + formatTime(current), x + 10, y + 40);
 
   // Forrige fullførte runde — oppdateres hver runde, også uten rekord
@@ -1337,15 +1369,33 @@ function drawRace() {
   drawSpeedometer();
   drawLapInfo();
   drawResetButton();
+  drawPauseButton();
 
-  // Måler tekstbredden først, så boksen alltid blir bred nok (ingen overflyt).
+  // Kontroll-tekst (forskjøvet til høyre for pause-ikonet). Måler bredden først.
   const hint = 'WASD / piltaster  •  Shift = boost  •  Mellomrom = drift';
   ctx.font = '13px monospace';
   const hintW = ctx.measureText(hint).width;
+  const hx = pauseButtonRect().x + pauseButtonRect().w + 8;
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillRect(8, 8, hintW + 16, 26);
+  ctx.fillRect(hx, 8, hintW + 16, 26);
   ctx.fillStyle = '#fff';
-  ctx.fillText(hint, 16, 26);
+  ctx.fillText(hint, hx + 8, 26);
+}
+
+// Pause-ikon (to streker) øverst til venstre.
+function pauseButtonRect() { return { x: 10, y: 8, w: 28, h: 26 }; }
+
+function drawPauseButton() {
+  const b = pauseButtonRect();
+  const hover = hitRect(b, mouseX, mouseY);
+  ctx.fillStyle = hover ? 'rgba(90,60,25,0.95)' : 'rgba(0,0,0,0.5)';
+  ctx.fillRect(b.x, b.y, b.w, b.h);
+  ctx.strokeStyle = hover ? '#ffd98a' : '#caa15a';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(b.x, b.y, b.w, b.h);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(b.x + 8, b.y + 6, 4, b.h - 12);
+  ctx.fillRect(b.x + 16, b.y + 6, 4, b.h - 12);
 }
 
 
@@ -1416,7 +1466,7 @@ function drawMenu() {
 
   const bw = 280, bh = 64, bx = canvas.width / 2 - bw / 2;
   addButton(bx, 270, bw, bh, 'START', () => { gameState = 'tracks'; });
-  addButton(bx, 354, bw, bh, 'INNSTILLINGER', () => { gameState = 'settings'; });
+  addButton(bx, 354, bw, bh, 'INNSTILLINGER', () => { settingsReturn = 'menu'; gameState = 'settings'; });
   drawButtons();
 }
 
@@ -1441,9 +1491,9 @@ function drawTracksScreen() {
   drawButtons();
 }
 
-// Velg bane → last den banens tider, sett bilen på pole og start løpet.
+// Velg bane → bytt til banens geometri, last tidene, sett bilen på pole og start.
 function selectTrack(t) {
-  currentTrack = t;
+  applyTrackGeometry(t);
   leaderboard = loadLeaderboard(t.lbKey);
   resetCar();
   lap.count = 0;
@@ -1498,7 +1548,57 @@ function drawSettingsScreen() {
   }
   ctx.textAlign = 'left';
 
-  addButton(30, canvas.height - 70, 160, 46, '‹ Tilbake', () => { saveSettings(); gameState = 'menu'; });
+  // Tilbake går dit du kom fra (hovedmeny eller pausemeny)
+  addButton(30, canvas.height - 70, 160, 46, '‹ Tilbake', () => { saveSettings(); gameState = settingsReturn; });
+  drawButtons();
+}
+
+// Et lite tre-panel (brukes av pausemenyen).
+function drawWoodPanel(x, y, w, h) {
+  const planks = 4, pw = w / planks;
+  for (let i = 0; i < planks; i++) {
+    ctx.fillStyle = i % 2 === 0 ? '#43311d' : '#392917';
+    ctx.fillRect(x + i * pw, y, pw, h);
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x + i * pw, y); ctx.lineTo(x + i * pw, y + h); ctx.stroke();
+  }
+  ctx.strokeStyle = '#241a0e'; ctx.lineWidth = 5; ctx.strokeRect(x, y, w, h);
+  ctx.strokeStyle = 'rgba(255,220,160,0.12)'; ctx.lineWidth = 1; ctx.strokeRect(x + 4, y + 4, w - 8, h - 8);
+}
+
+// Sett spillet på pause (fryser klokka ved å huske når pausen startet).
+function pauseGame() {
+  pauseStart = performance.now();
+  gameState = 'paused';
+}
+// Fortsett løpet — skyv rundeklokka fram med tiden pausen varte, så tiden er rettferdig.
+function resumeGame() {
+  if (lap.started) lap.startTime += performance.now() - pauseStart;
+  gameState = 'race';
+}
+
+// Pausemeny: tegnes oppå det frosne løpet.
+function drawPauseOverlay() {
+  uiButtons = [];
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';                 // mørk tint over løpet
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const pw = 320, ph = 250, px = canvas.width / 2 - pw / 2, py = canvas.height / 2 - ph / 2;
+  drawWoodPanel(px, py, pw, ph);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,225,180,0.95)';
+  ctx.font = 'bold 38px monospace';
+  ctx.fillText('PAUSE', canvas.width / 2, py + 56);
+  ctx.font = '13px monospace';
+  ctx.fillStyle = 'rgba(255,225,180,0.55)';
+  ctx.fillText('Esc for å fortsette', canvas.width / 2, py + 84);
+  ctx.textAlign = 'left';
+
+  const bw = 240, bh = 50, bx = canvas.width / 2 - bw / 2;
+  addButton(bx, py + 105, bw, bh, 'INNSTILLINGER', () => { settingsReturn = 'paused'; gameState = 'settings'; });
+  addButton(bx, py + 170, bw, bh, 'TILBAKE TIL MENY', () => { gameState = 'menu'; });
   drawButtons();
 }
 
@@ -1507,6 +1607,9 @@ function drawSettingsScreen() {
 function draw() {
   if (gameState === 'race') {
     drawRace();
+  } else if (gameState === 'paused') {
+    drawRace();          // det frosne løpet i bakgrunnen
+    drawPauseOverlay();  // pausemenyen oppå
   } else if (gameState === 'tracks') {
     drawTracksScreen();
   } else if (gameState === 'settings') {
@@ -1547,7 +1650,8 @@ function gameLoop(now) {
       accumulator -= FIXED_DT;
     }
   } else {
-    accumulator = 0;   // ingen simulering i menyene
+    accumulator = 0;     // ingen simulering i menyene
+    silenceSounds();     // demp motorlyden når vi ikke kjører
   }
 
   draw();

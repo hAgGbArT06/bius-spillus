@@ -27,7 +27,7 @@ Et viktig delmål er å lære kodeflyten steg for steg.
 Prosjektet er delt i tre faser. Hver fase bygger på den forrige.
 `[x]` = ferdig, `[ ]` = gjenstår, `[~]` = påbegynt.
 
-### Fase 1 — Grunnlaget (PÅGÅR)
+### Fase 1 — Grunnlaget (FERDIG ✅)
 Mål: solid kjørefølelse og en komplett singleplayer-runde.
 
 Ferdig:
@@ -58,9 +58,11 @@ Ferdig:
 - [x] Lyder: motorbrum og eksplosjonssmell (drift-skrik og boost-sus ble testet, men fjernet — brukeren likte dem ikke)
 - [x] Meny / tilstand-system: startmeny (tre-bakgrunn), banevalg, innstillinger (volum + bilfarge), Esc = tilbake til meny
 - [x] Per-bane leaderboard (Rektangelen beholder gamle tider) — klargjort for flere baner i fase 2
+- [x] **Data-drevet bane**: all bane-geometri (form, buffer, startlinje, grid, spawn, scenery) bor i `TRACKS`. En ny bane = en ny oppføring i lista. `applyTrackGeometry()` peker «aktiv bane» om ved banevalg.
 
-Gjenstår for å «lukke» fase 1:
-- [ ] **Data-drevet bane** (flytte den hardkodede bane-geometrien inn i bane-definisjonen) — *forutsetning for fase 2.* Påbegynt: `TRACKS`-liste finnes, men selve formen er fortsatt hardkodet
+- [x] Pausemeny: Esc eller pause-ikon i et løp → pause (klokka fryser). Valg: Innstillinger eller Tilbake til meny. Innstillinger husker om du kom fra meny eller pause.
+
+**✅ FASE 1 ER LUKKET!** Klar for fase 2 (flere baner + turnering).
 
 ### Fase 2 — Baner & turnering
 Mål: flere baner å velge mellom, og en turnering (cup) å konkurrere i.
@@ -126,3 +128,6 @@ webhotell snart; konkrete tekniske detaljer (server, protokoll) avklares når de
 | 2026-06-14 | Drift-skrik dempet, høyere terskel (kun ved stor vinkel) og mykere klang (v1.9) |
 | 2026-06-14 | Fjernet drift-skrik og boost-sus igjen (likte dem ikke) — beholder motor + eksplosjon (v2.0) |
 | 2026-06-14 | Meny-system: startmeny, banevalg, innstillinger (volum + bilfarge), per-bane leaderboard (v2.1) |
+| 2026-06-14 | Data-drevet bane: all geometri flyttet inn i TRACKS — FASE 1 LUKKET (v2.2) |
+| 2026-06-14 | Pausemeny (Esc / pause-ikon): Innstillinger + Tilbake til meny, fryser rundeklokka (v2.3) |
+| 2026-06-14 | Motorlyd dempes i alle ikke-kjørende tilstander (meny, pause osv.) (v2.4) |
