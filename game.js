@@ -36,7 +36,7 @@ const ctx = canvas.getContext('2d');
 
 // Versjonsnummer — vises nede til venstre, så man enkelt kan sjekke at alle
 // spiller samme versjon (nyttig hvis noen har en gammel, bufret kopi).
-const VERSION = 'v1.6';
+const VERSION = 'v1.7';
 
 
 // --- 1b. LYD (Web Audio API) ---
@@ -283,7 +283,7 @@ const car = {
   friction:          0.97,    // mens du gasser (lar toppfarten sette seg)
   coastFriction:     0.995,   // ingen knapper → bilen ruller fritt, mister nesten ingen fart
   brakeFriction:     0.94,    // når du bremser (pil ned / S)
-  handbrakeFriction: 0.985,   // drift: beholder nesten all fart → lange, fine drifter
+  handbrakeFriction: 0.992,   // drift: beholder nesten all fart → lange, fine drifter
 };
 
 function resetCar() {
@@ -687,8 +687,8 @@ function update() {
     const forwardDot = Math.cos(car.angle) * car.vx + Math.sin(car.angle) * car.vy;
     const dir = forwardDot >= 0 ? 1 : -1;
 
-    // Håndbrekk gir mye skarpere sving (lett å kaste bilen inn i en drift)
-    const turn = car.turnSpeed * (handbrake ? 2.0 : 1);
+    // Håndbrekk gir litt skarpere sving — mildt nok til finjustering midt i driften
+    const turn = car.turnSpeed * (handbrake ? 1.5 : 1);
     if (left)  car.angle -= turn * dir;
     if (right) car.angle += turn * dir;
   }
@@ -701,7 +701,7 @@ function update() {
   if (speed > 0.1) {
     let grip;
     if (handbrake) {
-      grip = 0.022;   // svært lavt grep → bilen slurer lenge = lang drift
+      grip = 0.014;   // svært lavt grep → bilen holder farten sidelengs = lang drift
     } else {
       // Lineær reduksjon: 0.18 ved stillestående → 0.07 ved full fart
       grip = Math.max(0.07, 0.18 - (speed / topSpeed) * 0.11);

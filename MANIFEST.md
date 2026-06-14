@@ -120,3 +120,4 @@ webhotell snart; konkrete tekniske detaljer (server, protokoll) avklares når de
 | 2026-06-14 | Startgrid flyttet til venstre, bil spawner på pole, klokka starter ved startlinja (v1.4) |
 | 2026-06-14 | Dekkspor per hjul — fire parallelle spor i stedet for én senterlinje (v1.5) |
 | 2026-06-14 | Drift-knapp (mellomrom) beholder fart + lavt grep for lange drifter, 2 spor normalt / 4 ved stor vinkel (v1.6) |
+| 2026-06-14 | Drift-tuning: mer fart beholdt sidelengs (lavere grep + høyere friksjon), mildere sving for finjustering (v1.7) |
